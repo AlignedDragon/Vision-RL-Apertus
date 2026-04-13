@@ -1,0 +1,17 @@
+# Data (reproducible from prepare scripts, too large for git)
+results/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# SLURM output
+*.out
+*.err
+
+# Editors
+.vscode/
+*.swp
+*~
