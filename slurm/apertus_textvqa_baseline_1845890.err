@@ -1,0 +1,30 @@
+/users/badralmahouri/miniconda3/envs/verl/lib/python3.12/site-packages/transformers/utils/hub.py:110: FutureWarning: Using `TRANSFORMERS_CACHE` is deprecated and will be removed in v5 of Transformers. Use `HF_HOME` instead.
+  warnings.warn(
+/users/badralmahouri/miniconda3/envs/verl/lib/python3.12/site-packages/transformers/utils/hub.py:110: FutureWarning: Using `TRANSFORMERS_CACHE` is deprecated and will be removed in v5 of Transformers. Use `HF_HOME` instead.
+  warnings.warn(
+/users/badralmahouri/miniconda3/envs/verl/lib/python3.12/site-packages/transformers/utils/hub.py:110: FutureWarning: Using `TRANSFORMERS_CACHE` is deprecated and will be removed in v5 of Transformers. Use `HF_HOME` instead.
+  warnings.warn(
+/users/badralmahouri/miniconda3/envs/verl/lib/python3.12/site-packages/transformers/utils/hub.py:110: FutureWarning: Using `TRANSFORMERS_CACHE` is deprecated and will be removed in v5 of Transformers. Use `HF_HOME` instead.
+  warnings.warn(
+/users/badralmahouri/miniconda3/envs/verl/lib/python3.12/site-packages/transformers/utils/hub.py:110: FutureWarning: Using `TRANSFORMERS_CACHE` is deprecated and will be removed in v5 of Transformers. Use `HF_HOME` instead.
+  warnings.warn(
+The tokenizer you are loading from '/capstor/store/cscs/swissai/infra01/MLLM/ablations/apertus-8b-img-SFT-32nodes-gbs512-mbs1-steps8030-img-text-seqlen8192-s2onlytxtloss/HF' with an incorrect regex pattern: https://huggingface.co/mistralai/Mistral-Small-3.1-24B-Instruct-2503/discussions/84#69121093e8b480e709447d5e. This will lead to incorrect tokenization. You should set the `fix_mistral_regex=True` flag when loading this tokenizer to fix this issue.
+`torch_dtype` is deprecated! Use `dtype` instead!
+`rope_scaling`'s original_max_position_embeddings field must be less than max_position_embeddings, got 8192 and max_position_embeddings=8192
+The tokenizer you are loading from '/capstor/store/cscs/swissai/infra01/MLLM/ablations/apertus-8b-img-SFT-32nodes-gbs512-mbs1-steps8030-img-text-seqlen8192-s2onlytxtloss/HF' with an incorrect regex pattern: https://huggingface.co/mistralai/Mistral-Small-3.1-24B-Instruct-2503/discussions/84#69121093e8b480e709447d5e. This will lead to incorrect tokenization. You should set the `fix_mistral_regex=True` flag when loading this tokenizer to fix this issue.
+`torch_dtype` is deprecated! Use `dtype` instead!
+`rope_scaling`'s original_max_position_embeddings field must be less than max_position_embeddings, got 8192 and max_position_embeddings=8192
+The tokenizer you are loading from '/capstor/store/cscs/swissai/infra01/MLLM/ablations/apertus-8b-img-SFT-32nodes-gbs512-mbs1-steps8030-img-text-seqlen8192-s2onlytxtloss/HF' with an incorrect regex pattern: https://huggingface.co/mistralai/Mistral-Small-3.1-24B-Instruct-2503/discussions/84#69121093e8b480e709447d5e. This will lead to incorrect tokenization. You should set the `fix_mistral_regex=True` flag when loading this tokenizer to fix this issue.
+`torch_dtype` is deprecated! Use `dtype` instead!
+`rope_scaling`'s original_max_position_embeddings field must be less than max_position_embeddings, got 8192 and max_position_embeddings=8192
+The tokenizer you are loading from '/capstor/store/cscs/swissai/infra01/MLLM/ablations/apertus-8b-img-SFT-32nodes-gbs512-mbs1-steps8030-img-text-seqlen8192-s2onlytxtloss/HF' with an incorrect regex pattern: https://huggingface.co/mistralai/Mistral-Small-3.1-24B-Instruct-2503/discussions/84#69121093e8b480e709447d5e. This will lead to incorrect tokenization. You should set the `fix_mistral_regex=True` flag when loading this tokenizer to fix this issue.
+`torch_dtype` is deprecated! Use `dtype` instead!
+`rope_scaling`'s original_max_position_embeddings field must be less than max_position_embeddings, got 8192 and max_position_embeddings=8192
+Using experimental xIELU CUDA. Enabled torch._dynamo for xIELU CUDA.
+Using experimental xIELU CUDA. Enabled torch._dynamo for xIELU CUDA.
+Using experimental xIELU CUDA. Enabled torch._dynamo for xIELU CUDA.
+Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]Using experimental xIELU CUDA. Enabled torch._dynamo for xIELU CUDA.
+Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]Loading checkpoint shards:  25%|██▌       | 1/4 [00:09<00:27,  9.22s/it]Loading checkpoint shards:  25%|██▌       | 1/4 [00:09<00:28,  9.54s/it]Loading checkpoint shards:  25%|██▌       | 1/4 [00:09<00:28,  9.54s/it]Loading checkpoint shards:  25%|██▌       | 1/4 [00:09<00:28,  9.54s/it]Loading checkpoint shards:  50%|█████     | 2/4 [00:20<00:20, 10.27s/it]Loading checkpoint shards:  50%|█████     | 2/4 [00:20<00:20, 10.27s/it]Loading checkpoint shards:  50%|█████     | 2/4 [00:20<00:20, 10.27s/it]Loading checkpoint shards:  50%|█████     | 2/4 [00:20<00:20, 10.15s/it]Loading checkpoint shards:  75%|███████▌  | 3/4 [00:32<00:11, 11.07s/it]Loading checkpoint shards:  75%|███████▌  | 3/4 [00:32<00:11, 11.14s/it]Loading checkpoint shards:  75%|███████▌  | 3/4 [00:32<00:11, 11.14s/it]Loading checkpoint shards:  75%|███████▌  | 3/4 [00:32<00:11, 11.14s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:40<00:00,  9.87s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:40<00:00, 10.05s/it]
+Loading checkpoint shards: 100%|██████████| 4/4 [00:40<00:00,  9.91s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:40<00:00, 10.13s/it]
+Loading checkpoint shards: 100%|██████████| 4/4 [00:40<00:00,  9.92s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:40<00:00, 10.13s/it]
+Loading checkpoint shards: 100%|██████████| 4/4 [00:40<00:00,  9.92s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:40<00:00, 10.13s/it]

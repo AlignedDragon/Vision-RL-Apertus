@@ -1,5 +1,6 @@
 # Data (reproducible from prepare scripts, too large for git)
-results/
+#datasets/textvqa/
+#results/
 
 # Python
 __pycache__/
@@ -8,8 +9,8 @@ __pycache__/
 *.egg-info/
 
 # SLURM output
-*.out
-*.err
+#*.out
+#*.err
 
 # Editors
 .vscode/

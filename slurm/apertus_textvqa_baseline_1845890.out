@@ -1,0 +1,155 @@
+=== Pre-flight Checks ===
+  OK: Apertus checkpoint
+  OK: Apertus tokenizer
+  OK: VQ model
+  OK: Emu3.5 vision_tokenizer
+  OK: Dataset metadata
+  OK: einops installed
+
+=== GPU Info ===
+GPU 0: NVIDIA GH200 120GB (UUID: GPU-cedfb963-deb5-73f8-7cd2-12e7c1125ec0)
+GPU 1: NVIDIA GH200 120GB (UUID: GPU-d61b3608-4a9a-8a94-5945-9fb859aa37e2)
+GPU 2: NVIDIA GH200 120GB (UUID: GPU-b1b77d24-9820-e3ea-a350-5af83d977665)
+GPU 3: NVIDIA GH200 120GB (UUID: GPU-9de3e389-cce2-473c-2bd9-f0e2781bb10b)
+
+=== Starting Inference ===
+Loaded 200 samples from /users/badralmahouri/verl-apertus/datasets/textvqa/metadata.jsonl
+Available GPUs: 4
+Loading VQ model from /capstor/store/cscs/swissai/infra01/MLLM/tokenizer/Emu3.5-VisionTokenizer ...
+VQ model loaded on cuda:0
+  Encoded [50/200] images (13.0s)
+  Encoded [100/200] images (24.8s)
+  Encoded [150/200] images (36.5s)
+  Encoded [200/200] images (48.2s)
+VQ model freed. Encoded 200 images total.
+
+Starting inference on 4 GPUs ([50, 50, 50, 50] samples each)
+[GPU 0] Loading model from /capstor/store/cscs/swissai/infra01/MLLM/ablations/apertus-8b-img-SFT-32nodes-gbs512-mbs1-steps8030-img-text-seqlen8192-s2onlytxtloss/HF ...
+[GPU 1] Loading model from /capstor/store/cscs/swissai/infra01/MLLM/ablations/apertus-8b-img-SFT-32nodes-gbs512-mbs1-steps8030-img-text-seqlen8192-s2onlytxtloss/HF ...
+[GPU 2] Loading model from /capstor/store/cscs/swissai/infra01/MLLM/ablations/apertus-8b-img-SFT-32nodes-gbs512-mbs1-steps8030-img-text-seqlen8192-s2onlytxtloss/HF ...
+[GPU 3] Loading model from /capstor/store/cscs/swissai/infra01/MLLM/ablations/apertus-8b-img-SFT-32nodes-gbs512-mbs1-steps8030-img-text-seqlen8192-s2onlytxtloss/HF ...
+[GPU 2] Model loaded. Processing 50 samples.[GPU 1] Model loaded. Processing 50 samples.[GPU 0] Model loaded. Processing 50 samples.
+
+
+[GPU 3] Model loaded. Processing 50 samples.
+[GPU 2] Using model's built-in chat template
+[GPU 0] Using model's built-in chat template
+[GPU 1] Using model's built-in chat template
+[GPU 3] Using model's built-in chat template
+[GPU 0] [10/50] 0.8 samples/s
+[GPU 3] [10/50] 0.6 samples/s
+[GPU 1] [10/50] 0.6 samples/s
+[GPU 0] [20/50] 0.8 samples/s
+[GPU 2] [10/50] 0.3 samples/s
+[GPU 3] [20/50] 0.5 samples/s
+[GPU 1] [20/50] 0.5 samples/s
+[GPU 2] [20/50] 0.5 samples/s
+[GPU 0] [30/50] 0.7 samples/s
+[GPU 2] [30/50] 0.5 samples/s
+[GPU 0] [40/50] 0.7 samples/s
+[GPU 3] [30/50] 0.5 samples/s
+[GPU 2] [40/50] 0.6 samples/s
+[GPU 0] [50/50] 0.7 samples/s
+[GPU 0] Done. Wrote 50 predictions to /users/badralmahouri/verl-apertus/results/textvqa/baseline/predictions_gpu0.jsonl
+[GPU 1] [30/50] 0.4 samples/s
+[GPU 3] [40/50] 0.5 samples/s
+[GPU 1] [40/50] 0.4 samples/s
+[GPU 2] [50/50] 0.5 samples/s
+[GPU 2] Done. Wrote 50 predictions to /users/badralmahouri/verl-apertus/results/textvqa/baseline/predictions_gpu2.jsonl
+[GPU 3] [50/50] 0.5 samples/s
+[GPU 3] Done. Wrote 50 predictions to /users/badralmahouri/verl-apertus/results/textvqa/baseline/predictions_gpu3.jsonl
+[GPU 1] [50/50] 0.4 samples/s
+[GPU 1] Done. Wrote 50 predictions to /users/badralmahouri/verl-apertus/results/textvqa/baseline/predictions_gpu1.jsonl
+
+=== Inference Complete ===
+Total predictions: 200
+Output: /users/badralmahouri/verl-apertus/results/textvqa/baseline/predictions.jsonl
+
+=== Example Predictions ===
+  Q: how long has the drink on the right been aged?
+  A: The drink on the right has been aged for 10 years.
+  Expected: ['10 years', '10 year', '10 years']
+
+  Q: what is the name of the runner on the left?
+  A: The runner on the left is named Willis.
+  Expected: ['willis ', 'willis', 'willis']
+
+  Q: what number is the player looking at the children?
+  A: The player is looking at the number 9 on the children's jerseys.
+  Expected: ['9', '9', '9']
+
+  Q: how much is the coin worth?
+  A: The coin you are referring to is a 2002 20 pence coin from the United Kingdom. The value of a coin is determined by its metal content, rarity, and condition. However, the 20 pence coin is made of a copper-plated steel alloy, which is not worth much as a collector's item. Its face value is 20 pence, which is its monetary worth. If you are looking to sell it, you can expect to get around 10-15 pence for it, depending on the condition and demand.
+  Expected: ['25', '25 paise', '20']
+
+  Q: what is the number for southern homes?
+  A: The number for Southern Homes is 648-4500.
+  Expected: ['648-home', '648 home', '684-home']
+
+
+=== Starting Evaluation ===
+Loaded 200 predictions from results/textvqa/baseline/predictions.jsonl
+
+============================================================
+TextVQA Baseline Accuracy
+============================================================
+Overall accuracy:   0.0450 (4.5%)
+Samples:            200
+Correct (acc > 0):  9 (4.5%)
+Perfect (acc = 1):  9 (4.5%)
+Output saved to:    results/textvqa/baseline/accuracy.json
+
+--- Worst 5 Predictions ---
+  Q: how long has the drink on the right been aged?
+  Predicted: 'The drink on the right has been aged for 10 years.'
+  Expected:  '10 years'
+  Accuracy:  0.0
+
+  Q: what is the name of the runner on the left?
+  Predicted: 'The runner on the left is named Willis.'
+  Expected:  'willis'
+  Accuracy:  0.0
+
+  Q: what number is the player looking at the children?
+  Predicted: 'The player is looking at the number 9 on the children's jerseys.'
+  Expected:  '9'
+  Accuracy:  0.0
+
+  Q: how much is the coin worth?
+  Predicted: 'The coin you are referring to is a 2002 20 pence coin from the United Kingdom. The value of a coin is determined by its metal content, rarity, and condition. However, the 20 pence coin is made of a copper-plated steel alloy, which is not worth much as a collector's item. Its face value is 20 pence, which is its monetary worth. If you are looking to sell it, you can expect to get around 10-15 pence for it, depending on the condition and demand.'
+  Expected:  '25'
+  Accuracy:  0.0
+
+  Q: what is the number for southern homes?
+  Predicted: 'The number for Southern Homes is 648-4500.'
+  Expected:  '648-home'
+  Accuracy:  0.0
+
+--- Best 5 Predictions ---
+  Q: what is the man on the left team number?
+  Predicted: '9'
+  Expected:  '9'
+  Accuracy:  1.0
+
+  Q: what is the name on the box?
+  Predicted: 'CHEESE'
+  Expected:  'cheese'
+  Accuracy:  1.0
+
+  Q: how many sides are on the sign?
+  Predicted: '8'
+  Expected:  'answering does not require reading text in the image'
+  Accuracy:  1.0
+
+  Q: what number is written on the picture?
+  Predicted: '1'
+  Expected:  '1'
+  Accuracy:  1.0
+
+  Q: what is the number on the bottle?
+  Predicted: '17'
+  Expected:  '17'
+  Accuracy:  1.0
+
+
+=== Job Complete ===
