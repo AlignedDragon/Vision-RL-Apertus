@@ -1,6 +1,9 @@
 # Data (reproducible from prepare scripts, too large for git)
-#datasets/textvqa/
-#results/
+datasets/textvqa/
+datasets/hrbench/
+datasets/vstar/
+datasets/pope/
+results/
 
 # Python
 __pycache__/

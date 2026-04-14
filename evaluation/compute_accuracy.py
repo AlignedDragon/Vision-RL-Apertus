@@ -1,13 +1,12 @@
-"""Compute TextVQA soft accuracy from predictions.
+"""Compute accuracy from predictions. Supports three evaluation modes:
 
-TextVQA uses the VQA challenge accuracy metric:
-    accuracy(pred, answers) = min(1, count(pred matches in answers) / 3)
-
-where answers is the list of 10 human annotations per question.
-Both prediction and answers are normalized before comparison.
+- vqa:    TextVQA soft accuracy — min(1, matches/3) over 10 annotations
+- mcq:    Exact match after normalization (for multiple-choice)
+- binary: Yes/no accuracy + precision/recall/F1 (for POPE)
 
 Usage:
     python evaluation/compute_accuracy.py --predictions results/textvqa/baseline/predictions.jsonl
+    python evaluation/compute_accuracy.py --predictions results/pope/baseline/predictions.jsonl --mode binary
 """
 
 import argparse
@@ -51,6 +50,27 @@ def textvqa_accuracy(prediction: str, answers: list[str]) -> float:
     return min(1.0, matches / 3.0)
 
 
+def mcq_accuracy(prediction: str, answers: list[str]) -> float:
+    """Exact match after normalization. Returns 1.0 or 0.0."""
+    pred_norm = normalize_answer(prediction)
+    return 1.0 if any(normalize_answer(a) == pred_norm for a in answers) else 0.0
+
+
+def binary_accuracy(prediction: str, answers: list[str]) -> float:
+    """Yes/no exact match. Returns 1.0 or 0.0."""
+    pred_norm = normalize_answer(prediction)
+    # Accept common variants
+    pred_yn = "yes" if pred_norm in ("yes", "true", "1") else "no" if pred_norm in ("no", "false", "0") else pred_norm
+    return 1.0 if any(normalize_answer(a) == pred_yn for a in answers) else 0.0
+
+
+SCORERS = {
+    "vqa": textvqa_accuracy,
+    "mcq": mcq_accuracy,
+    "binary": binary_accuracy,
+}
+
+
 def main():
     parser = argparse.ArgumentParser(description="Compute TextVQA accuracy")
     parser.add_argument(
@@ -62,6 +82,12 @@ def main():
         "--output",
         default=None,
         help="Path to output accuracy JSON (default: same dir as predictions)",
+    )
+    parser.add_argument(
+        "--mode",
+        default="vqa",
+        choices=["vqa", "mcq", "binary"],
+        help="Evaluation mode: vqa (soft accuracy), mcq (exact match), binary (yes/no + F1)",
     )
     args = parser.parse_args()
 
@@ -79,10 +105,12 @@ def main():
 
     print(f"Loaded {len(samples)} predictions from {predictions_path}")
 
+    scorer = SCORERS[args.mode]
+
     # Compute per-sample accuracy
     per_sample = []
     for s in samples:
-        acc = textvqa_accuracy(s["prediction"], s["answers"])
+        acc = scorer(s["prediction"], s["answers"])
         per_sample.append({
             "question_id": s["question_id"],
             "question": s["question"],
@@ -103,6 +131,7 @@ def main():
 
     # Build output
     result = {
+        "mode": args.mode,
         "overall_accuracy": round(overall, 4),
         "num_samples": len(samples),
         "num_correct": num_correct,
@@ -112,6 +141,18 @@ def main():
         "per_sample": per_sample,
     }
 
+    # Binary mode: add precision/recall/F1
+    if args.mode == "binary":
+        tp = sum(1 for s, p in zip(samples, per_sample) if s["answers"][0] == "yes" and p["accuracy"] == 1.0)
+        fp = sum(1 for s, p in zip(samples, per_sample) if s["answers"][0] == "no" and p["accuracy"] == 0.0)
+        fn = sum(1 for s, p in zip(samples, per_sample) if s["answers"][0] == "yes" and p["accuracy"] == 0.0)
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+        result["precision"] = round(precision, 4)
+        result["recall"] = round(recall, 4)
+        result["f1"] = round(f1, 4)
+
     # Write output
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
@@ -119,13 +160,17 @@ def main():
 
     # Print summary
     print(f"\n{'='*60}")
-    print(f"TextVQA Baseline Accuracy")
+    print(f"Evaluation Results (mode={args.mode})")
     print(f"{'='*60}")
     print(f"Overall accuracy:   {overall:.4f} ({overall*100:.1f}%)")
     print(f"Samples:            {len(samples)}")
     print(f"Correct (acc > 0):  {num_correct} ({num_correct/len(samples)*100:.1f}%)")
     print(f"Perfect (acc = 1):  {num_perfect} ({num_perfect/len(samples)*100:.1f}%)")
     print(f"Output saved to:    {output_path}")
+    if args.mode == "binary":
+        print(f"Precision:          {result['precision']:.4f}")
+        print(f"Recall:             {result['recall']:.4f}")
+        print(f"F1:                 {result['f1']:.4f}")
 
     # Show worst failures
     print(f"\n--- Worst 5 Predictions ---")

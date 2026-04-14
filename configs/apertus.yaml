@@ -4,7 +4,7 @@ model:
   # Emu3.5 IBQ vision tokenizer (encodes images to discrete tokens)
   vq_model: /capstor/store/cscs/swissai/infra01/MLLM/tokenizer/Emu3.5-VisionTokenizer
   # Emu3.5 source (needed on PYTHONPATH for vision_tokenizer module)
-  emu3_src: /users/badralmahouri/Emu3.5/src
+  emu3_src: /users/msayfiddinov/capscratch/Emu3.5/src
 
 generation:
   max_new_tokens: 256
@@ -15,3 +15,23 @@ dataset:
     num_samples: 200
     seed: 42
     split: validation
+    eval_mode: vqa
+  hrbench:
+    num_samples: 200
+    seed: 42
+    split: hrbench_4k
+    eval_mode: mcq
+  vstar:
+    num_samples: 191  # full dataset
+    seed: 42
+    split: test
+    eval_mode: mcq
+  pope:
+    num_samples: 200
+    seed: 42
+    split: test
+    eval_mode: binary
+
+tool_agent:
+  max_turns: 5
+  max_new_tokens: 256
