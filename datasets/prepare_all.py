@@ -5,13 +5,16 @@ Each gets standardized to JSONL metadata + images/ directory.
 No GPU needed — runs on the login node.
 
 Usage:
-    pip install datasets
+    pip install datasets Pillow huggingface_hub
     python datasets/prepare_all.py                  # all datasets
     python datasets/prepare_all.py --only textvqa   # single dataset
 """
 
+import base64
+import io
 import json
 import random
+import re
 import sys
 from pathlib import Path
 
@@ -23,8 +26,11 @@ NUM_SAMPLES = 200
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 
-def save_dataset(name: str, records: list[dict], images: dict[int, Image.Image]):
-    """Save records as metadata.jsonl and images as JPEG."""
+def save_dataset(name: str, records: list[dict], images: dict):
+    """Save records as metadata.jsonl and images as JPEG.
+
+    images: dict mapping question_id -> PIL.Image
+    """
     out_dir = SCRIPT_DIR / name
     img_dir = out_dir / "images"
     img_dir.mkdir(parents=True, exist_ok=True)
@@ -39,10 +45,22 @@ def save_dataset(name: str, records: list[dict], images: dict[int, Image.Image])
     print(f"  Saved {len(records)} samples to {out_dir}")
 
 
+# ---------------------------------------------------------------------------
+# TextVQA
+# ---------------------------------------------------------------------------
+
 def prepare_textvqa():
-    """facebook/textvqa — validation split, 200 samples."""
+    """facebook/textvqa — validation split, 200 samples.
+
+    Uses refs/convert/parquet revision since the dataset script is no longer
+    supported by newer datasets library versions.
+    """
     print("\n=== TextVQA ===")
-    ds = load_dataset("facebook/textvqa", split="validation")
+    ds = load_dataset(
+        "facebook/textvqa",
+        split="validation",
+        revision="refs/convert/parquet",
+    )
 
     random.seed(SEED)
     indices = random.sample(range(len(ds)), NUM_SAMPLES)
@@ -62,8 +80,15 @@ def prepare_textvqa():
     save_dataset("textvqa", records, images)
 
 
+# ---------------------------------------------------------------------------
+# HR-Bench
+# ---------------------------------------------------------------------------
+
 def prepare_hrbench():
-    """DreamMr/HR-Bench — hrbench_4k split, 200 samples. Multiple choice."""
+    """DreamMr/HR-Bench — hrbench_4k split, 200 samples.
+
+    Multiple choice. Image is base64-encoded JPEG string.
+    """
     print("\n=== HR-Bench ===")
     ds = load_dataset("DreamMr/HR-Bench", split="hrbench_4k")
 
@@ -78,6 +103,10 @@ def prepare_hrbench():
         correct_text = row[correct_letter]
         options = {k: row[k] for k in ["A", "B", "C", "D"]}
 
+        # Decode base64 JPEG
+        img_bytes = base64.b64decode(row["image"])
+        img = Image.open(io.BytesIO(img_bytes))
+
         records.append({
             "question_id": qid,
             "question": row["question"],
@@ -89,33 +118,51 @@ def prepare_hrbench():
                 "category": row["category"],
             },
         })
-        images[qid] = row["image"]
+        images[qid] = img
 
     save_dataset("hrbench", records, images)
 
 
+# ---------------------------------------------------------------------------
+# VStar-Bench
+# ---------------------------------------------------------------------------
+
 def prepare_vstar():
-    """craigwu/vstar_bench — test split, all 191 samples. Multiple choice."""
+    """craigwu/vstar_bench — test split, all 191 samples.
+
+    Multiple choice. Images are stored as files in the HF repo,
+    the `image` column is just a relative path string.
+    """
     print("\n=== VStar-Bench ===")
+    from huggingface_hub import hf_hub_download
+
     ds = load_dataset("craigwu/vstar_bench", split="test")
 
     records, images = [], {}
     for i, row in enumerate(ds):
-        qid = i  # use index as question_id since row IDs may not be ints
+        qid = i
         correct_letter = row["label"]
-
-        # Parse options from the text field (format: "Question\nA. option\nB. option...")
         text = row["text"]
+
+        # Parse options: format is "(A) option\n(B) option\n..."
         options = {}
         for letter in ["A", "B", "C", "D"]:
-            import re
-            match = re.search(rf"{letter}\.\s*(.+?)(?:\n|$)", text)
+            match = re.search(rf"\({letter}\)\s*(.+?)(?:\n|$)", text)
             if match:
                 options[letter] = match.group(1).strip()
 
         correct_text = options.get(correct_letter, correct_letter)
-        # Extract just the question (before options)
-        question_text = text.split("\n")[0] if "\n" in text else text
+        # Question is the first line
+        question_text = text.split("\n")[0].strip()
+
+        # Download image from HF repo
+        image_path_in_repo = row["image"]
+        local_path = hf_hub_download(
+            repo_id="craigwu/vstar_bench",
+            filename=image_path_in_repo,
+            repo_type="dataset",
+        )
+        img = Image.open(local_path)
 
         records.append({
             "question_id": qid,
@@ -129,17 +176,23 @@ def prepare_vstar():
                 "original_text": text,
             },
         })
-        images[qid] = row["image"]
+        images[qid] = img
+
+        if (i + 1) % 50 == 0:
+            print(f"  Downloaded {i+1}/{len(ds)} images")
 
     save_dataset("vstar", records, images)
 
+
+# ---------------------------------------------------------------------------
+# POPE
+# ---------------------------------------------------------------------------
 
 def prepare_pope():
     """lmms-lab/POPE — test split, 200 samples (balanced yes/no)."""
     print("\n=== POPE ===")
     ds = load_dataset("lmms-lab/POPE", split="test")
 
-    # Split by answer for balanced sampling
     yes_indices = [i for i in range(len(ds)) if ds[i]["answer"] == "yes"]
     no_indices = [i for i in range(len(ds)) if ds[i]["answer"] == "no"]
 
@@ -151,7 +204,7 @@ def prepare_pope():
     records, images = [], {}
     for idx in selected:
         row = ds[idx]
-        qid = idx  # use dataset index as question_id
+        qid = idx
 
         records.append({
             "question_id": qid,
@@ -167,6 +220,10 @@ def prepare_pope():
 
     save_dataset("pope", records, images)
 
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
 
 DATASETS = {
     "textvqa": prepare_textvqa,
