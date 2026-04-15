@@ -32,6 +32,12 @@ dataset:
     split: test
     eval_mode: binary
 
+  vtc_bench:
+    num_samples: 680
+    seed: 42
+    eval_mode: vtc
+    tsv_path: /capstor/scratch/cscs/msayfiddinov/VTC-Bench/data/VTC-Bench.tsv
+
 tool_agent:
   max_turns: 5
   max_new_tokens: 256

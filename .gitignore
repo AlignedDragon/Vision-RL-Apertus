@@ -3,6 +3,7 @@ datasets/textvqa/
 datasets/hrbench/
 datasets/vstar/
 datasets/pope/
+datasets/vtc_bench/
 results/
 
 # Python
