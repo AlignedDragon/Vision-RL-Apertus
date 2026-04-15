@@ -1,0 +1,19 @@
+model:
+  checkpoint: Qwen/Qwen2.5-VL-7B-Instruct
+
+generation:
+  max_new_tokens: 256
+  temperature: 0.0  # greedy decoding for reproducible evaluation
+
+dataset:
+  textvqa:
+    eval_mode: vqa
+  hrbench:
+    eval_mode: mcq
+  vstar:
+    eval_mode: mcq
+  pope:
+    eval_mode: binary
+
+tool_agent:
+  max_turns: 5
