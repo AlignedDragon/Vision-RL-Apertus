@@ -15,14 +15,14 @@
 set -euo pipefail
 
 # --- Conda ---
-source ~/miniconda3/etc/profile.d/conda.sh
+source ~/scratch/miniconda3/etc/profile.d/conda.sh
 conda activate verl
 
 # --- Paths ---
-BASE="/users/$USER/verl-apertus"
+BASE="/capstor/scratch/cscs/$USER/verl-apertus"
 cd "$BASE"
 
-EMU3_SRC="/users/$USER/Emu3.5/src"
+EMU3_SRC="/users/$USER/capscratch/Emu3.5/src"
 export PYTHONPATH="${EMU3_SRC}:${BASE}:${PYTHONPATH:-}"
 
 APERTUS_CHECKPOINT="/capstor/store/cscs/swissai/infra01/MLLM/ablations/apertus-8b-img-SFT-32nodes-gbs512-mbs1-steps8030-img-text-seqlen8192-s2onlytxtloss/HF"

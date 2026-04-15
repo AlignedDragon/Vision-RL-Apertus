@@ -15,14 +15,14 @@
 set -euo pipefail
 
 # --- Conda ---
-source ~/miniconda3/etc/profile.d/conda.sh
+source ~/scratch/miniconda3/etc/profile.d/conda.sh
 conda activate verl
 
 # --- Paths ---
-BASE="/users/$USER/verl-apertus"
+BASE="/capstor/scratch/cscs/$USER/verl-apertus"
 cd "$BASE"
 
-EMU3_SRC="/users/$USER/Emu3.5/src"
+EMU3_SRC="/users/$USER/capscratch/Emu3.5/src"
 VTC_BENCH="/capstor/scratch/cscs/$USER/VTC-Bench/eval"
 export PYTHONPATH="${EMU3_SRC}:${VTC_BENCH}:${BASE}:${PYTHONPATH:-}"
 
