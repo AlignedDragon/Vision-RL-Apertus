@@ -29,6 +29,13 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from inference.vision import encode_image, load_vq_model
 
+SYSTEM_PROMPT = (
+    "You are Apertus, a helpful assistant created by the SwissAI initiative.\n"
+    "Knowledge cutoff: 2024-04\n"
+    "Current date: 2026-04-13\n\n"
+    "Answer with a single word or short phrase."
+)
+
 
 def load_config(config_path: str) -> dict:
     with open(config_path) as f:
@@ -53,26 +60,25 @@ def build_prompt_manual(image_token_str: str, question: str) -> str:
     - Generation prompt (assistant_start)
     """
     return (
-        "<s>"
-        "<|system_start|>"
-        "You are Apertus, a helpful assistant created by the SwissAI initiative.\n"
-        "Knowledge cutoff: 2024-04\n"
-        "Current date: 2026-04-13"
-        "<|system_end|>"
-        "<|developer_start|>"
-        "Deliberation: disabled\n"
-        "Tool Capabilities: disabled"
-        "<|developer_end|>"
-        "<|user_start|>"
+        f"<s>"
+        f"<|system_start|>{SYSTEM_PROMPT}<|system_end|>"
+        f"<|developer_start|>"
+        f"Deliberation: disabled\n"
+        f"Tool Capabilities: disabled"
+        f"<|developer_end|>"
+        f"<|user_start|>"
         f"{image_token_str}\n{question}"
-        "<|user_end|>"
-        "<|assistant_start|>"
+        f"<|user_end|>"
+        f"<|assistant_start|>"
     )
 
 
 def try_apply_chat_template(tokenizer, question: str) -> str | None:
     """Try using the model's built-in chat template. Returns None on failure."""
-    messages = [{"role": "user", "content": f"<|image|>\n{question}"}]
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": f"<|image|>\n{question}"},
+    ]
     try:
         return tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
@@ -186,16 +192,28 @@ def worker_inference(
 
         # Decode only the generated tokens (skip prompt)
         generated_ids = output_ids[0, input_ids.shape[1]:]
-        prediction = tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
+        prediction = tokenizer.decode(generated_ids, skip_special_tokens=False).strip()
 
-        results.append({
-            "question_id": qid,
-            "question": question,
-            "prediction": prediction,
-            "answers": sample["answers"],
-            "prompt_tokens": int(input_ids.shape[1]),
-            "generated_tokens": int(generated_ids.shape[0]),
-        })
+        if i < 5:
+            results.append({
+                "question_id": qid,
+                "question": question,
+                "prediction": prediction,
+                "answers": sample["answers"],
+                "prompt_tokens": int(input_ids.shape[1]),
+                "generated_tokens": int(generated_ids.shape[0]),
+                "prompt_text": prompt_text,
+            })
+        else:
+            results.append({
+                "question_id": qid,
+                "question": question,
+                "prediction": prediction,
+                "answers": sample["answers"],
+                "prompt_tokens": int(input_ids.shape[1]),
+                "generated_tokens": int(generated_ids.shape[0]),
+            })
+
 
         if (i + 1) % 10 == 0 or i == len(samples) - 1:
             elapsed = time.time() - start

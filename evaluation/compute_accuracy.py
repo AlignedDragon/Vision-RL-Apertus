@@ -50,12 +50,13 @@ def textvqa_accuracy(prediction: str, answers: list[str]) -> float:
     return min(1.0, matches / 3.0)
 
 
+# ! NOT CHECKED
 def mcq_accuracy(prediction: str, answers: list[str]) -> float:
     """Exact match after normalization. Returns 1.0 or 0.0."""
     pred_norm = normalize_answer(prediction)
     return 1.0 if any(normalize_answer(a) == pred_norm for a in answers) else 0.0
 
-
+# ! NOT CHECKED
 def binary_accuracy(prediction: str, answers: list[str]) -> float:
     """Yes/no exact match. Returns 1.0 or 0.0."""
     pred_norm = normalize_answer(prediction)
