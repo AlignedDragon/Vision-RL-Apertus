@@ -1,0 +1,40 @@
+tools:
+  - class_name: "tools.image_zoom_in_emu_tool.ImageZoomInEmuTool"
+    config:
+      type: native
+      vq_model_path: /capstor/store/cscs/swissai/infra01/MLLM/tokenizer/Emu3.5-VisionTokenizer
+      vq_device: cuda:0
+      target_area: 262144
+      min_dimension: 28
+    tool_schema:
+      type: function
+      function:
+        name: image_zoom_in_tool
+        description: "Zoom in on a specific region of an image by cropping it on a bounding box."
+        parameters:
+          type: object
+          properties:
+            bbox_2d:
+              type: array
+              items:
+                type: number
+              description: "[x1, y1, x2, y2]"
+          required:
+            - bbox_2d
+
+  - class_name: "tools.display_answers_tool.DisplayAnswersTool"
+    config:
+      type: native
+    tool_schema:
+      type: function
+      function:
+        name: display_answers
+        description: "Display the final answer to the user."
+        parameters:
+          type: object
+          properties:
+            answer:
+              type: string
+              description: "The final answer (a single phrase, word, or letter)."
+          required:
+            - answer

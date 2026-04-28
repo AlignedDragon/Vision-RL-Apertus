@@ -1,0 +1,77 @@
+hydra:
+  searchpath:
+    - file:///users/msayfiddinov/capscratch/verl/verl/trainer/config
+
+defaults:
+  - ppo_trainer
+  - _self_
+
+data:
+  train_files: /users/msayfiddinov/capscratch/verl-apertus/datasets/cof_rl/train.parquet
+  val_files: /users/msayfiddinov/capscratch/verl-apertus/datasets/cof_rl/val.parquet
+  prompt_key: prompt
+  max_prompt_length: 8192
+  max_response_length: 2048
+  train_batch_size: 64
+  return_raw_chat: true
+  return_multi_modal_inputs: false
+  apply_chat_template_kwargs:
+    enable_thinking: true
+  filter_overlong_prompts: true
+  truncation: error
+
+actor_rollout_ref:
+  hybrid_engine: true
+  model:
+    path: /capstor/store/cscs/swissai/infra01/MLLM/ablations/apertus-8b-img-SFT-32nodes-gbs512-mbs1-steps8030-img-text-seqlen8192-s2onlytxtloss/HF
+    trust_remote_code: true
+    enable_gradient_checkpointing: true
+  actor:
+    optim:
+      lr: 1e-6
+    use_kl_loss: true
+    kl_loss_coef: 0.001
+    kl_loss_type: low_var_kl
+    entropy_coeff: 0
+    ppo_mini_batch_size: 64
+    ppo_micro_batch_size_per_gpu: 1
+  rollout:
+    name: sglang
+    gpu_memory_utilization: 0.5
+    tensor_model_parallel_size: 2
+    n: 8
+    log_prob_micro_batch_size_per_gpu: 4
+    multi_turn:
+      enable: true
+      format: hermes
+      max_assistant_turns: 5
+      max_parallel_calls: 1
+      max_tool_response_length: 8192
+      tool_response_truncate_side: middle
+      tool_config_path: /users/msayfiddinov/capscratch/verl-apertus/configs/cof_rl_tool_config.yaml
+  ref:
+    log_prob_micro_batch_size_per_gpu: 4
+    fsdp_config:
+      param_offload: true
+
+algorithm:
+  adv_estimator: grpo
+  use_kl_in_reward: false
+
+reward:
+  reward_manager:
+    name: naive
+  custom_reward_function:
+    path: /users/msayfiddinov/capscratch/verl-apertus/rewards/cof_rl_reward.py
+    name: compute_score
+
+trainer:
+  project_name: cof_rl_apertus
+  experiment_name: apertus8b_grpo_cof_rl
+  total_epochs: 5
+  n_gpus_per_node: 4
+  nnodes: 1
+  save_freq: 100
+  test_freq: 50
+  critic_warmup: 0
+  logger: ["console", "wandb"]
