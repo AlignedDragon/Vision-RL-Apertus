@@ -44,9 +44,8 @@ from inference.vision import encode_image, load_vq_model
 
 QWEN_TRAILER_SENTINEL = "Think in the mind first"
 APERTUS_INSTRUCTION = (
-    "Think step by step inside <|inner_prefix|>...<|inner_suffix|>. "
-    "If you need to call tools, emit them inside <|tools_prefix|>[{...}]<|tools_suffix|>. "
-    "Give your final answer at the end of your response as a single word."
+    "Think step by step and then decide whether to call tools one or more time OR provide finals answer. <|inner_prefix|>...<|inner_suffix|>. "
+    "Format strictyly as: <|inner_prefix|>...<|inner_suffix|> <|tools_prefix|>[{...}]<|tools_suffix|> (if any tools needed) OR <|answer_prefix|>...<|answer_suffix|> (if no tools needed)"
 )
 
 
@@ -74,7 +73,7 @@ def extract_tool_def(system_text: str) -> dict:
         raise ValueError(f"Unexpected tool envelope: {obj.keys()}")
     return obj["function"]
 
-
+# ! here
 def clean_user_content(text: str, image_token_str: str) -> str:
     """Strip the Qwen trailer, splice in the IBQ image tokens, append Apertus trailer."""
     head = text.split(QWEN_TRAILER_SENTINEL, 1)[0].rstrip()
