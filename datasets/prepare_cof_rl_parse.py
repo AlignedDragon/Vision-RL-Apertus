@@ -1,17 +1,19 @@
 """Parse CoF-RL-Data raw.jsonl into Apertus-formatted metadata.jsonl.
 
-Per row:
-  1. IBQ-encode the image into Apertus visual tokens.
-  2. Strip the Qwen formatting trailer from the user content.
-  3. Replace the literal `<image>` placeholder with the IBQ token string.
-  4. Append a short Apertus-style instruction trailer.
-  5. Render the full prompt via tokenizer.apply_chat_template with the
-     extracted tool definition and enable_thinking=True.
+Per row, render an Apertus 3-block prompt:
+  - system:    "You are a helpful assistant."
+  - developer: tool capabilities (the source <tools> tool plus the
+               `display_answers` tool used to emit the final answer),
+               rendered as TypeScript types via the chat template's tools= parameter
+  - user:      original question with <image> replaced by IBQ vision tokens,
+               the Qwen "Think in the mind first..." trailer stripped, and an
+               instruction to emit the final answer via the `display_answers` tool.
 
 Output records:
     {
       "question_id": int,
       "prompt": str,                                 # fully rendered Apertus prompt
+      "image_path": str,
       "reward_model": {"ground_truth": str, "style": str},
       "data_source": str,
       "ability": str,
@@ -44,9 +46,25 @@ from inference.vision import encode_image, load_vq_model
 
 QWEN_TRAILER_SENTINEL = "Think in the mind first"
 APERTUS_INSTRUCTION = (
-    "Think step by step and then decide whether to call tools one or more time OR provide finals answer. <|inner_prefix|>...<|inner_suffix|>. "
-    "Format strictyly as: <|inner_prefix|>...<|inner_suffix|> <|tools_prefix|>[{...}]<|tools_suffix|> (if any tools needed) OR <|answer_prefix|>...<|answer_suffix|> (if no tools needed)"
+    "Call the display_answers tool exactly once at the end of your response, "
+    "passing your final answer as the `answer` argument."
 )
+APERTUS_SYSTEM = "You are a helpful assistant."
+
+DISPLAY_ANSWERS_TOOL = {
+    "name": "display_answers",
+    "description": "Display the final answer to the user.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "answer": {
+                "type": "string",
+                "description": "The final answer (a single phrase, word, or letter).",
+            },
+        },
+        "required": ["answer"],
+    },
+}
 
 
 def load_config(path: str) -> dict:
@@ -73,12 +91,27 @@ def extract_tool_def(system_text: str) -> dict:
         raise ValueError(f"Unexpected tool envelope: {obj.keys()}")
     return obj["function"]
 
-# ! here
-def clean_user_content(text: str, image_token_str: str) -> str:
-    """Strip the Qwen trailer, splice in the IBQ image tokens, append Apertus trailer."""
-    head = text.split(QWEN_TRAILER_SENTINEL, 1)[0].rstrip()
+def build_system_message() -> dict:
+    """Apertus system block: a single short instruction (constant)."""
+    return {"role": "system", "content": APERTUS_SYSTEM}
+
+
+def build_user_message(raw_user_text: str, image_token_str: str) -> dict:
+    """Apertus user block: strip the Qwen trailer, splice in IBQ tokens, append Apertus instruction."""
+    head = raw_user_text.split(QWEN_TRAILER_SENTINEL, 1)[0].rstrip()
     head = head.replace("<image>", image_token_str, 1)
-    return f"{head}\n\n{APERTUS_INSTRUCTION}"
+    return {"role": "user", "content": f"{head}\n\n{APERTUS_INSTRUCTION}"}
+
+
+def render_apertus_prompt(tokenizer, system_msg: dict, user_msg: dict, tool_def: dict) -> str:
+    """Render system + developer (tools) + user via the Apertus chat template."""
+    return tokenizer.apply_chat_template(
+        [system_msg, user_msg],
+        tools=[tool_def, DISPLAY_ANSWERS_TOOL],
+        enable_thinking=True,
+        add_generation_prompt=True,
+        tokenize=False,
+    )
 
 
 def get_system_text(prompt_messages: list) -> str:
@@ -170,20 +203,14 @@ def main():
                 continue
 
             user_text = get_user_text(row["prompt"])
-            cleaned_user = clean_user_content(user_text, image_token_str)
-            messages = [{"role": "user", "content": cleaned_user}]
-
-            prompt_str = tokenizer.apply_chat_template(
-                messages,
-                tools=[tool_def],
-                enable_thinking=True,
-                add_generation_prompt=True,
-                tokenize=False,
-            )
+            system_msg = build_system_message()
+            user_msg = build_user_message(user_text, image_token_str)
+            prompt_str = render_apertus_prompt(tokenizer, system_msg, user_msg, tool_def)
 
             record = {
                 "question_id": qid,
                 "prompt": prompt_str,
+                "image_path": str(image_path),
                 "reward_model": row["reward_model"],
                 "data_source": row["data_source"],
                 "ability": row["ability"],
