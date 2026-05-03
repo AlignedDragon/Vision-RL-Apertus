@@ -14,6 +14,8 @@
 
 set -euo pipefail
 
+echo "=== Job started at $(date '+%Y-%m-%d %H:%M:%S') ==="
+
 # --- Conda ---
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate verl
@@ -80,4 +82,5 @@ echo "=== Starting Evaluation ==="
 python3 evaluation/compute_accuracy.py --predictions results/textvqa/baseline/predictions.jsonl
 echo ""
 
+echo "=== Job ended at $(date '+%Y-%m-%d %H:%M:%S') ==="
 echo "=== Job Complete ==="

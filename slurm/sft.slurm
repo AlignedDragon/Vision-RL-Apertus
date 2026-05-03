@@ -14,6 +14,8 @@
 
 set -euo pipefail
 
+echo "=== Job started at $(date '+%Y-%m-%d %H:%M:%S') ==="
+
 # --- Conda ---
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate verl
@@ -94,4 +96,5 @@ srun --nodes="$SLURM_NNODES" --ntasks-per-node=1 --gpus-per-node="$SLURM_GPUS_ON
         --config-name=sft_apertus_cof"
 
 echo ""
+echo "=== Job ended at $(date '+%Y-%m-%d %H:%M:%S') ==="
 echo "=== Job Complete ==="

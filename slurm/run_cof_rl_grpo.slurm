@@ -80,9 +80,11 @@ echo "=== GPU Info ==="
 nvidia-smi --list-gpus
 echo ""
 
+echo "== Job started at $(date)"
 echo "=== Starting GRPO training ==="
 python3 -m verl.trainer.main_ppo \
     --config-path="$PROJECT/configs" \
     --config-name=cof_rl_grpo "$@"
 
+echo "=== Job ended at $(date) ==="
 echo "=== Job Complete ==="

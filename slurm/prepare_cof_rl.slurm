@@ -14,6 +14,8 @@
 
 set -euo pipefail
 
+echo "=== Job started at $(date '+%Y-%m-%d %H:%M:%S') ==="
+
 # --- Conda ---
 source /users/msayfiddinov/capscratch/miniconda/etc/profile.d/conda.sh
 conda activate verl
@@ -75,4 +77,5 @@ echo "=== Starting Parse ==="
 python3 datasets/prepare_cof_rl_parse.py --config configs/apertus.yaml
 echo ""
 
+echo "=== Job ended at $(date '+%Y-%m-%d %H:%M:%S') ==="
 echo "=== Job Complete ==="

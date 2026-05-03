@@ -14,6 +14,8 @@
 
 set -euo pipefail
 
+echo "=== Job started at $(date '+%Y-%m-%d %H:%M:%S') ==="
+
 # --- Conda ---
 source ~/scratch/miniconda3/etc/profile.d/conda.sh
 conda activate verl
@@ -79,4 +81,5 @@ echo "=== Starting Evaluation ==="
 python3 evaluation/compute_vtc_accuracy.py --predictions results/vtc_bench/tool_agent/predictions.jsonl
 echo ""
 
+echo "=== Job ended at $(date '+%Y-%m-%d %H:%M:%S') ==="
 echo "=== Job Complete ==="
