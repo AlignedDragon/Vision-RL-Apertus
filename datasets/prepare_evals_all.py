@@ -79,7 +79,46 @@ def prepare_textvqa():
 
     save_dataset("textvqa", records, images)
 
+def prepare_tool_vqa():
+    """DietCoke4671/ToolVQA.
+    """
+    from huggingface_hub import hf_hub_download
+    print("\n=== ToolVQA ===")
+    ds = load_dataset(
+        "json",
+        data_files="hf://datasets/DietCoke4671/ToolVQA/train.jsonl",
+        split="train",
+    )
 
+    random.seed(SEED)
+    indices = random.sample(range(len(ds)), NUM_SAMPLES)
+
+    records, images = [], {}
+    for idx in indices:
+        row = ds[idx]
+        qid = idx
+        records.append({
+            "question_id": idx,
+            "image_path": row["image_path"],
+            "question": row["question"],
+            "context": row["context"],
+            "ori_question": row["ori_question"],
+            "thought_rethink": row["thought_rethink"],
+            "thought_question": row["question"],
+            "answer": row["answer"],
+            "type": row["type"],
+        })
+
+        image_path_in_repo = row["image_path"]
+        local_path = hf_hub_download(
+            repo_id="DietCoke4671/ToolVQA",
+            filename=image_path_in_repo,
+            repo_type="dataset",
+        )
+        img = Image.open(local_path)
+        images[qid] = img
+
+    save_dataset("toolvqa", records, images)
 # ---------------------------------------------------------------------------
 # HR-Bench
 # ---------------------------------------------------------------------------
@@ -241,14 +280,15 @@ def main():
 
     targets = [args.only] if args.only else list(DATASETS.keys())
 
-    for name in targets:
-        try:
-            DATASETS[name]()
-        except Exception as e:
-            print(f"ERROR preparing {name}: {e}", file=sys.stderr)
-            import traceback
-            traceback.print_exc()
-            continue
+    prepare_tool_vqa()
+    # for name in targets:
+    #     try:
+    #         DATASETS[name]()
+    #     except Exception as e:
+    #         print(f"ERROR preparing {name}: {e}", file=sys.stderr)
+    #         import traceback
+    #         traceback.print_exc()
+    #         continue
 
     print("\nDone.")
 

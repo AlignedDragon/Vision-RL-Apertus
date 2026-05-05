@@ -1,7 +1,7 @@
 # Data (reproducible from prepare scripts, too large for git)
 datasets/*/
 results/
-slurm/logs/
+slurm/*/
 
 # Python
 __pycache__/

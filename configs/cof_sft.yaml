@@ -4,8 +4,9 @@ defaults:
 
 data:
   train_files:
-    - /users/${oc.env:USER}/verl-apertus/datasets/cof_sft/metadata.jsonl
-  val_files: null
+    - /users/${oc.env:USER}/verl-apertus/datasets/cof_sft/train.parquet
+  val_files:
+    - /users/${oc.env:USER}/verl-apertus/datasets/cof_sft/val.parquet
   train_batch_size: 32
   micro_batch_size_per_gpu: 1
   max_length: 8192
@@ -42,3 +43,4 @@ trainer:
   logger: [console, wandb]
   save_freq: 200
   test_freq: -1
+  rollout_data_dir: /users/msayfiddinov/capscratch/verl-apertus/slurm/rollout_logs

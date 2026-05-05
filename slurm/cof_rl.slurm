@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=cof_rl_grpo
+#SBATCH --job-name=rl
 #SBATCH --account=infra01
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1

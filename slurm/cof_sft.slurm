@@ -1,16 +1,16 @@
 #!/bin/bash
-#SBATCH --job-name=apertus_sft
+#SBATCH --job-name=sft
 #SBATCH --account=infra01
 #SBATCH --nodes=2
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=64
 #SBATCH --mem=460000
 #SBATCH --time=10:00:00
-#SBATCH --environment=verl_env
+#SBATCH --environment=verl
 #SBATCH --partition=normal
 #SBATCH --gpus-per-node=4
-#SBATCH --output=slurm/%x_%j.out
-#SBATCH --error=slurm/%x_%j.err
+#SBATCH --output=logs/%x_%j.out
+#SBATCH --error=logs/%x_%j.err
 
 set -euo pipefail
 
@@ -52,7 +52,8 @@ check_path() {
 
 check_path "Apertus checkpoint" "$APERTUS_CHECKPOINT/config.json"
 check_path "Apertus tokenizer" "$APERTUS_CHECKPOINT/tokenizer_config.json"
-check_path "SFT metadata" "$BASE/datasets/cof_sft/metadata.jsonl"
+check_path "SFT train parquet" "$BASE/datasets/cof_sft/train.parquet"
+check_path "SFT val parquet" "$BASE/datasets/cof_sft/val.parquet"
 check_path "Custom dataset class" "$BASE/datasets/cof_sft_dataset.py"
 check_path "Hydra config" "$BASE/configs/sft_apertus_cof.yaml"
 
@@ -93,7 +94,7 @@ srun --nodes="$SLURM_NNODES" --ntasks-per-node=1 --gpus-per-node="$SLURM_GPUS_ON
         --rdzv-endpoint=$HEAD_ADDR:$RDZV_PORT \
         -m verl.trainer.sft_trainer \
         --config-path=$BASE/configs \
-        --config-name=sft_apertus_cof"
+        --config-name=cof_sft"
 
 echo ""
 echo "=== Job ended at $(date '+%Y-%m-%d %H:%M:%S') ==="

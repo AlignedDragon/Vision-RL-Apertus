@@ -28,6 +28,10 @@ import sys
 import time
 from pathlib import Path
 
+import numpy as np
+import pyarrow as pa
+import pyarrow.parquet as pq
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -36,11 +40,18 @@ sys.path.insert(0, str(PROJECT_ROOT))
 # so the pure-python helpers below can be unit-tested without them.
 from datasets.prepare_cof_rl_parse import (
     APERTUS_SYSTEM,
-    APERTUS_INSTRUCTION,
     QWEN_TRAILER_SENTINEL,
     DISPLAY_ANSWERS_TOOL,
     extract_tool_def,
     load_config,
+)
+
+# SFT keeps multi-word ground-truths, so the instruction must accept any answer
+# string (RL drops multi-word answers and instructs "single word"). The single
+# element of the `answers` array carries the original answer verbatim.
+APERTUS_INSTRUCTION = (
+    "Call the display_answers tool exactly once at the end of your response, "
+    "passing your final answer as the single element of the `answers` argument."
 )
 
 THINK_RE = re.compile(r"<think>\s*(.*?)\s*</think>", re.DOTALL)
@@ -71,7 +82,7 @@ def parse_final_assistant(text: str) -> tuple[str, dict]:
     ans_m = ANSWER_RE.search(text)
     if not think_m or not ans_m:
         raise ValueError("final assistant missing <think> or <answer>")
-    args_str = json.dumps({"answer": ans_m.group(1).strip()}, ensure_ascii=False)
+    args_str = json.dumps({"answers": [ans_m.group(1).strip()]}, ensure_ascii=False)
     return think_m.group(1).strip(), {"name": "display_answers", "arguments": args_str}
 
 
@@ -107,6 +118,8 @@ def main():
     parser.add_argument("--output", default=None, help="Default: datasets/cof_sft/metadata.jsonl")
     parser.add_argument("--config", default="configs/apertus.yaml")
     parser.add_argument("--limit", type=int, default=None, help="Process only first N rows (debug)")
+    parser.add_argument("--val_ratio", type=float, default=0.05)
+    parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
     dataset_dir = PROJECT_ROOT / "datasets" / "cof_sft"
@@ -210,6 +223,31 @@ def main():
         print(f"\ntext char-length stats: min={text_lens[0]} "
               f"p50={text_lens[n // 2]} p95={text_lens[int(n * 0.95)]} "
               f"max={text_lens[-1]}")
+
+    # Deterministic shuffle + split → train/val parquet (consumed by
+    # CoFSFTDataset; metadata.jsonl above stays for human inspection).
+    meta_rows: list[dict] = []
+    with open(output_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            meta_rows.append(json.loads(line))
+
+    if meta_rows:
+        rng = np.random.default_rng(args.seed)
+        perm = rng.permutation(len(meta_rows))
+        n_val = max(1, int(round(len(meta_rows) * args.val_ratio))) if len(meta_rows) > 1 else 0
+        val_set = set(perm[:n_val].tolist())
+        train_recs = [m for i, m in enumerate(meta_rows) if i not in val_set]
+        val_recs = [m for i, m in enumerate(meta_rows) if i in val_set]
+
+        train_out = output_path.parent / "train.parquet"
+        val_out = output_path.parent / "val.parquet"
+        pq.write_table(pa.Table.from_pylist(train_recs), train_out)
+        pq.write_table(pa.Table.from_pylist(val_recs), val_out)
+        print(f"\nWrote {len(train_recs)} rows to {train_out}")
+        print(f"Wrote {len(val_recs)} rows to {val_out}")
 
 
 if __name__ == "__main__":

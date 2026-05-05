@@ -14,6 +14,7 @@ export PYTHONPATH="${PROJECT}:${EMU3_SRC}:${PYTHONPATH:-}"
 export PYTHONUNBUFFERED=1
 export HF_HOME="${SCRATCH}/hf_home"
 export TRANSFORMERS_CACHE="${HF_HOME}"
+export HYDRA_FULL_ERRO=1 # for error tracking
 
 # --- Pre-flight checks ---
 echo "=== Pre-flight Checks ==="

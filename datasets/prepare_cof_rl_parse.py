@@ -35,6 +35,9 @@ import sys
 import time
 from pathlib import Path
 
+import numpy as np
+import pyarrow as pa
+import pyarrow.parquet as pq
 import torch
 import yaml
 from PIL import Image
@@ -68,9 +71,89 @@ DISPLAY_ANSWERS_TOOL = {
 }
 
 
+USER_BLOCK = re.compile(r"<\|user_start\|>(.*?)<\|user_end\|>", re.DOTALL)
+
+
 def load_config(path: str) -> dict:
     with open(path) as f:
         return yaml.safe_load(f)
+
+
+def _extract_user_content(rendered_prompt: str) -> str:
+    matches = USER_BLOCK.findall(rendered_prompt)
+    if len(matches) != 1:
+        raise ValueError(
+            f"Expected exactly 1 user block in rendered prompt, found {len(matches)}"
+        )
+    return matches[0]
+
+
+def _build_parquet_record(meta: dict, split: str) -> dict:
+    """Convert one metadata.jsonl row into the verl-RL parquet schema."""
+    user_content = _extract_user_content(meta["prompt"])
+
+    image_path = meta["image_path"]
+    if not Path(image_path).is_absolute():
+        raise ValueError(f"image_path is not absolute: {image_path!r}")
+
+    qid = meta["question_id"]
+    answer = meta["reward_model"]["ground_truth"]
+
+    return {
+        "data_source": "cof_rl",
+        "agent_name": "cof_tool_agent",
+        "prompt": [
+            {"role": "system", "content": APERTUS_SYSTEM},
+            {"role": "user", "content": user_content},
+        ],
+        "ability": meta.get("ability", ""),
+        "reward_model": {"style": "rule", "ground_truth": answer},
+        "extra_info": {
+            "index": qid,
+            "split": split,
+            "answer": answer,
+            "need_tools_kwargs": True,
+            "tools_kwargs": {
+                "image_zoom_in_tool": {
+                    "create_kwargs": {"image_path": image_path},
+                },
+            },
+        },
+    }
+
+
+def _split_and_write_parquet(
+    metadata_path: Path, out_dir: Path, val_ratio: float, seed: int
+) -> tuple[int, int]:
+    """Read metadata.jsonl, deterministic shuffle+split, write train/val parquet."""
+    meta_rows: list[dict] = []
+    with open(metadata_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            meta_rows.append(json.loads(line))
+
+    n = len(meta_rows)
+    if n == 0:
+        return 0, 0
+
+    rng = np.random.default_rng(seed)
+    perm = rng.permutation(n)
+    n_val = max(1, int(round(n * val_ratio))) if n > 1 else 0
+    val_idx = set(perm[:n_val].tolist())
+
+    train_records: list[dict] = []
+    val_records: list[dict] = []
+    for i, meta in enumerate(meta_rows):
+        split = "val" if i in val_idx else "train"
+        rec = _build_parquet_record(meta, split)
+        (val_records if split == "val" else train_records).append(rec)
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    pq.write_table(pa.Table.from_pylist(train_records), out_dir / "train.parquet")
+    pq.write_table(pa.Table.from_pylist(val_records), out_dir / "val.parquet")
+    return len(train_records), len(val_records)
 
 
 def extract_tool_def(system_text: str) -> dict:
@@ -139,6 +222,8 @@ def main():
     parser.add_argument("--output", default=None, help="Default: datasets/cof_rl/metadata.jsonl")
     parser.add_argument("--config", default="configs/apertus.yaml")
     parser.add_argument("--limit", type=int, default=None, help="Process only first N rows (debug)")
+    parser.add_argument("--val_ratio", type=float, default=0.05)
+    parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
     dataset_dir = PROJECT_ROOT / "datasets" / "cof_rl"
@@ -254,6 +339,12 @@ def main():
         print(f"\nprompt char-length stats: min={prompt_lens[0]} "
               f"p50={prompt_lens[n // 2]} p95={prompt_lens[int(n * 0.95)]} "
               f"max={prompt_lens[-1]}")
+
+    n_train, n_val = _split_and_write_parquet(
+        output_path, output_path.parent, args.val_ratio, args.seed
+    )
+    print(f"\nWrote {n_train} rows to {output_path.parent / 'train.parquet'}")
+    print(f"Wrote {n_val} rows to {output_path.parent / 'val.parquet'}")
 
 
 if __name__ == "__main__":
