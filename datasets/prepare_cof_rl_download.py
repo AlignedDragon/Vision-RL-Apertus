@@ -90,7 +90,7 @@ def main():
     output_dir = Path(args.output_dir) if args.output_dir else SCRIPT_DIR / "cof_rl"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print(output_dir, args.split)
+    print(f"Downloading '{args.split}' into {output_dir}")
     n_rows = download_dataset(output_dir, split=args.split)
     download_and_extract_images(output_dir)
 

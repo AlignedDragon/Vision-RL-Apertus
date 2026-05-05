@@ -18,17 +18,25 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 
 
 def download_dataset(output_dir: Path, split: str = "train") -> int:
-    """Download the HF dataset split and write raw.jsonl. Returns row count."""
-    from datasets import load_dataset
+    """Download cof_sft_data.json from HF and write raw.jsonl. Returns row count."""
+    from huggingface_hub import hf_hub_download
 
-    print(f"Loading {REPO_ID} split={split} ...")
-    ds = load_dataset(REPO_ID, split=split)
-    print(f"Loaded {len(ds)} rows")
+    if split != "train":
+        raise ValueError(f"This dataset only ships a 'train' split, got {split!r}")
+
+    print(f"Downloading cof_sft_data.json from {REPO_ID} ...")
+    json_path = hf_hub_download(
+        repo_id=REPO_ID,
+        filename="cof_sft_data.json",
+        repo_type="dataset",
+    )
+    with open(json_path, "r", encoding="utf-8") as f:
+        rows = json.load(f)
+    print(f"Loaded {len(rows)} rows from {json_path}")
 
     raw_path = output_dir / "raw.jsonl"
     with open(raw_path, "w", encoding="utf-8") as f:
-        for row in ds:
-            # Normalize image path: source uses "./images/foo.jpg"; strip the leading "./"
+        for row in rows:
             images = row.get("images") or []
             image_paths = []
             for entry in images:
@@ -43,7 +51,7 @@ def download_dataset(output_dir: Path, split: str = "train") -> int:
             }, ensure_ascii=False) + "\n")
 
     print(f"Wrote {raw_path}")
-    return len(ds)
+    return len(rows)
 
 
 def download_and_extract_images(output_dir: Path):
@@ -84,7 +92,7 @@ def main():
     output_dir = Path(args.output_dir) if args.output_dir else SCRIPT_DIR / "cof_sft"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print(output_dir, args.split)
+    print(f"Downloading '{args.split}' split into {output_dir}")
     n_rows = download_dataset(output_dir, split=args.split)
     download_and_extract_images(output_dir)
 

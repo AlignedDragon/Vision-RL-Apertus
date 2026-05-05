@@ -21,7 +21,7 @@ source ~/scratch/miniconda3/etc/profile.d/conda.sh
 conda activate verl
 
 # --- Paths ---
-BASE="/capstor/scratch/cscs/$USER/verl-apertus"
+BASE="/users/$USER/capscratch/verl-apertus"
 cd "$BASE"
 
 EMU3_SRC="/users/$USER/capscratch/Emu3.5/src"

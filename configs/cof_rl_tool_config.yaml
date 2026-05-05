@@ -21,20 +21,3 @@ tools:
               description: "[x1, y1, x2, y2]"
           required:
             - bbox_2d
-
-  - class_name: "tools.display_answers_tool.DisplayAnswersTool"
-    config:
-      type: native
-    tool_schema:
-      type: function
-      function:
-        name: display_answers
-        description: "Display the final answer to the user."
-        parameters:
-          type: object
-          properties:
-            answer:
-              type: string
-              description: "The final answer (a single phrase, word, or letter)."
-          required:
-            - answer

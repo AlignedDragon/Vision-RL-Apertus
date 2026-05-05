@@ -47,22 +47,23 @@ from inference.vision import encode_image, load_vq_model
 QWEN_TRAILER_SENTINEL = "Think in the mind first"
 APERTUS_INSTRUCTION = (
     "Call the display_answers tool exactly once at the end of your response, "
-    "passing your final answer as the `answer` argument."
+    "passing your final answer as a single word in the `answers` argument."
 )
-APERTUS_SYSTEM = "You are a helpful assistant."
+APERTUS_SYSTEM = "You are a helpful assistant with access to tools."
 
 DISPLAY_ANSWERS_TOOL = {
     "name": "display_answers",
-    "description": "Display the final answer to the user.",
+    "description": "Display the answers to the user.",
     "parameters": {
         "type": "object",
         "properties": {
-            "answer": {
-                "type": "string",
-                "description": "The final answer (a single phrase, word, or letter).",
+            "answers": {
+                "type": "array",
+                "items": {"type":"string"},
+                "description": "The final answer.",
             },
         },
-        "required": ["answer"],
+        "required": ["answers"],
     },
 }
 
@@ -83,10 +84,13 @@ def extract_tool_def(system_text: str) -> dict:
     Apertus's chat_template.jinja accesses tool.name / tool.description / tool.parameters
     directly, so we unwrap and return the inner `function` dict.
     """
-    match = re.search(r"<tools>\s*(.*?)\s*</tools>", system_text, re.DOTALL)
-    if not match:
-        raise ValueError("No <tools>...</tools> block found in system content")
-    obj = json.loads(match.group(1))
+    content = next(
+        (m.strip() for m in re.findall(r"<tools>(.*?)</tools>", system_text, re.DOTALL) if m.strip()),
+        None,
+    )
+    if content is None:
+        raise ValueError("No non-empty <tools>...</tools> block found in system content")
+    obj = json.loads(content)
     if obj.get("type") != "function" or "function" not in obj:
         raise ValueError(f"Unexpected tool envelope: {obj.keys()}")
     return obj["function"]
@@ -145,12 +149,20 @@ def main():
 
     # Load source rows
     rows = []
+    num_multi = 0 # number of questions with multi word responses
     with open(input_path) as f:
         for line in f:
-            rows.append(json.loads(line))
+            line = json.loads(line)
+            if " " in line["reward_model"]["ground_truth"]:
+                num_multi += 1
+                continue
+            rows.append(line)
+            
         if args.limit:
             rows = rows[: args.limit]
+
     print(f"Loaded {len(rows)} rows from {input_path}")
+    print(f"Dropped {num_multi} questions for including multiple words")
 
     # Extract and validate tool definition (identical across rows)
     tool_def = extract_tool_def(get_system_text(rows[0]["prompt"]))

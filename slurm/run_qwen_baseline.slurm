@@ -21,7 +21,7 @@ source ~/miniconda3/etc/profile.d/conda.sh
 conda activate verl
 
 # --- Paths ---
-BASE="/users/$USER/verl-apertus"
+BASE="/users/$USER/capscratch/verl-apertus"
 cd "$BASE"
 
 export PYTHONPATH="${BASE}:${PYTHONPATH:-}"

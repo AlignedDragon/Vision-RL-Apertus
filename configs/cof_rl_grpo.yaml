@@ -1,7 +1,3 @@
-hydra:
-  searchpath:
-    - file:///users/msayfiddinov/capscratch/verl/verl/trainer/config
-
 defaults:
   - ppo_trainer
   - _self_
@@ -75,3 +71,4 @@ trainer:
   test_freq: 50
   critic_warmup: 0
   logger: ["console", "wandb"]
+  rollout_data_dir: /users/msayfiddinov/capscratch/verl-apertus/slurm/rollout_logs
