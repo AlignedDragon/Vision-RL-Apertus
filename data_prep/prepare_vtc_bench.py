@@ -4,8 +4,8 @@ Downloads images from HuggingFace and creates metadata.jsonl in the
 standard verl-apertus format.
 
 Usage:
-    python datasets/prepare_vtc_bench.py
-    python datasets/prepare_vtc_bench.py --tsv-path /path/to/VTC-Bench.tsv
+    python data_prep/prepare_vtc_bench.py
+    python data_prep/prepare_vtc_bench.py --tsv-path /path/to/VTC-Bench.tsv
 """
 
 import argparse
@@ -129,12 +129,12 @@ def main():
     parser.add_argument(
         "--output-dir",
         default=None,
-        help="Output directory (default: datasets/vtc_bench)",
+        help="Output directory (default: data_prep/vtc_bench)",
     )
     args = parser.parse_args()
 
     project_root = Path(__file__).resolve().parent.parent
-    output_dir = Path(args.output_dir) if args.output_dir else project_root / "datasets" / "vtc_bench"
+    output_dir = Path(args.output_dir) if args.output_dir else project_root / "data_prep" / "vtc_bench"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Step 1: Parse TSV

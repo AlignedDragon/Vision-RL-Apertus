@@ -6,8 +6,8 @@ No GPU needed — runs on the login node.
 
 Usage:
     pip install datasets Pillow huggingface_hub
-    python datasets/prepare_all.py                  # all datasets
-    python datasets/prepare_all.py --only textvqa   # single dataset
+    python data_prep/prepare_all.py                  # all datasets
+    python data_prep/prepare_all.py --only textvqa   # single dataset
 """
 
 import base64

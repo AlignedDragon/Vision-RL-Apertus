@@ -4,8 +4,8 @@ No GPU needed — runs on the login node. Downloads the train split, fetches
 images.zip, extracts it, and writes a raw.jsonl that the parse step consumes.
 
 Usage:
-    python datasets/prepare_cof_sft_download.py
-    python datasets/prepare_cof_sft_download.py --output-dir /tmp/cof_sft
+    python data_prep/prepare_cof_sft_download.py
+    python data_prep/prepare_cof_sft_download.py --output-dir /tmp/cof_sft
 """
 
 import argparse
@@ -85,7 +85,7 @@ def download_and_extract_images(output_dir: Path):
 
 def main():
     parser = argparse.ArgumentParser(description="Download CoF-SFT-Data for Apertus prep")
-    parser.add_argument("--output-dir", default=None, help="Default: datasets/cof_sft")
+    parser.add_argument("--output-dir", default=None, help="Default: data_prep/cof_sft")
     parser.add_argument("--split", default="train")
     args = parser.parse_args()
 

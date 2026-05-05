@@ -56,7 +56,7 @@ check_path "Apertus checkpoint" "$APERTUS_CHECKPOINT/config.json"
 check_path "Apertus tokenizer" "$APERTUS_CHECKPOINT/tokenizer_config.json"
 check_path "VQ model" "$VQ_MODEL_PATH/model.ckpt"
 check_path "Emu3.5 vision_tokenizer" "$EMU3_SRC/vision_tokenizer/__init__.py"
-check_path "Dataset metadata" "$BASE/datasets/textvqa/metadata.jsonl"
+check_path "Dataset metadata" "$BASE/data_prep/textvqa/metadata.jsonl"
 
 # Check einops is installed
 python3 -c "import einops" 2>/dev/null && echo "  OK: einops installed" || { echo "  FAIL: einops not installed (pip install einops)"; ((ERROR_COUNT++)); }

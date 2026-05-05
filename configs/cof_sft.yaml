@@ -4,9 +4,9 @@ defaults:
 
 data:
   train_files:
-    - /users/${oc.env:USER}/verl-apertus/datasets/cof_sft/train.parquet
+    - /users/${oc.env:USER}/verl-apertus/data_prep/cof_sft/train.parquet
   val_files:
-    - /users/${oc.env:USER}/verl-apertus/datasets/cof_sft/val.parquet
+    - /users/${oc.env:USER}/verl-apertus/data_prep/cof_sft/val.parquet
   train_batch_size: 32
   micro_batch_size_per_gpu: 1
   max_length: 8192
@@ -14,7 +14,7 @@ data:
   pad_mode: right
   text_key: text
   custom_cls:
-    path: /users/${oc.env:USER}/verl-apertus/datasets/cof_sft_dataset.py
+    path: /users/${oc.env:USER}/verl-apertus/data_prep/cof_sft_dataset.py
     name: CoFSFTDataset
 
 model:

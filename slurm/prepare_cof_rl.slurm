@@ -55,15 +55,15 @@ check_path "Apertus checkpoint" "$APERTUS_CHECKPOINT/config.json"
 check_path "Apertus tokenizer" "$APERTUS_CHECKPOINT/tokenizer_config.json"
 check_path "VQ model" "$VQ_MODEL_PATH/model.ckpt"
 check_path "Emu3.5 vision_tokenizer" "$EMU3_SRC/vision_tokenizer/__init__.py"
-check_path "raw.jsonl from download step" "$BASE/datasets/cof_rl/raw.jsonl"
-check_path "images dir from download step" "$BASE/datasets/cof_rl/images"
+check_path "raw.jsonl from download step" "$BASE/data_prep/cof_rl/raw.jsonl"
+check_path "images dir from download step" "$BASE/data_prep/cof_rl/images"
 
 python3 -c "import einops" 2>/dev/null && echo "  OK: einops installed" || { echo "  FAIL: einops not installed"; ((ERROR_COUNT++)); }
 
 if [ $ERROR_COUNT -gt 0 ]; then
     echo ""
     echo "ERROR: $ERROR_COUNT pre-flight checks failed."
-    echo "Hint: run datasets/prepare_cof_rl_download.py on the login node first."
+    echo "Hint: run data_prep/prepare_cof_rl_download.py on the login node first."
     exit 1
 fi
 
@@ -74,7 +74,7 @@ echo ""
 
 # --- Run parse ---
 echo "=== Starting Parse ==="
-python3 datasets/prepare_cof_rl_parse.py --config configs/apertus.yaml
+python3 data_prep/prepare_cof_rl_parse.py --config configs/apertus.yaml
 echo ""
 
 echo "=== Job ended at $(date '+%Y-%m-%d %H:%M:%S') ==="

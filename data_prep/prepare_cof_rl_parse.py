@@ -22,7 +22,7 @@ Output records:
     }
 
 Usage (interactive on a GPU node):
-    python datasets/prepare_cof_rl_parse.py --limit 5
+    python data_prep/prepare_cof_rl_parse.py --limit 5
 
 Usage (SLURM):
     sbatch slurm/prepare_cof_rl.slurm
@@ -218,15 +218,15 @@ def get_user_text(prompt_messages: list) -> str:
 
 def main():
     parser = argparse.ArgumentParser(description="Render CoF-RL prompts in Apertus format")
-    parser.add_argument("--input", default=None, help="Default: datasets/cof_rl/raw.jsonl")
-    parser.add_argument("--output", default=None, help="Default: datasets/cof_rl/metadata.jsonl")
+    parser.add_argument("--input", default=None, help="Default: data_prep/cof_rl/raw.jsonl")
+    parser.add_argument("--output", default=None, help="Default: data_prep/cof_rl/metadata.jsonl")
     parser.add_argument("--config", default="configs/apertus.yaml")
     parser.add_argument("--limit", type=int, default=None, help="Process only first N rows (debug)")
     parser.add_argument("--val_ratio", type=float, default=0.05)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
-    dataset_dir = PROJECT_ROOT / "datasets" / "cof_rl"
+    dataset_dir = PROJECT_ROOT / "data_prep" / "cof_rl"
     input_path = Path(args.input) if args.input else dataset_dir / "raw.jsonl"
     output_path = Path(args.output) if args.output else dataset_dir / "metadata.jsonl"
 

@@ -1,5 +1,5 @@
 # Data (reproducible from prepare scripts, too large for git)
-datasets/*/
+data_prep/*/
 results/
 slurm/*/
 

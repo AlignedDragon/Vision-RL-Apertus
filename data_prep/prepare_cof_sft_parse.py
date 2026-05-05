@@ -16,7 +16,7 @@ Output records:
     }
 
 Usage (interactive on a GPU node):
-    python datasets/prepare_cof_sft_parse.py --limit 5
+    python data_prep/prepare_cof_sft_parse.py --limit 5
 
 Usage (SLURM): clone slurm/prepare_cof_rl.slurm and swap the script + dataset dir.
 """
@@ -38,7 +38,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 # Re-export the constants/helpers we share with the RL parse. Heavy deps
 # (torch, PIL, transformers, vision_tokenizer) are imported inside main()
 # so the pure-python helpers below can be unit-tested without them.
-from datasets.prepare_cof_rl_parse import (
+from data_prep.prepare_cof_rl_parse import (
     APERTUS_SYSTEM,
     QWEN_TRAILER_SENTINEL,
     DISPLAY_ANSWERS_TOOL,
@@ -114,15 +114,15 @@ def build_messages(src_msgs: list, image1_tokens: str, image2_tokens: str) -> li
 
 def main():
     parser = argparse.ArgumentParser(description="Render CoF-SFT trajectories in Apertus format")
-    parser.add_argument("--input", default=None, help="Default: datasets/cof_sft/raw.jsonl")
-    parser.add_argument("--output", default=None, help="Default: datasets/cof_sft/metadata.jsonl")
+    parser.add_argument("--input", default=None, help="Default: data_prep/cof_sft/raw.jsonl")
+    parser.add_argument("--output", default=None, help="Default: data_prep/cof_sft/metadata.jsonl")
     parser.add_argument("--config", default="configs/apertus.yaml")
     parser.add_argument("--limit", type=int, default=None, help="Process only first N rows (debug)")
     parser.add_argument("--val_ratio", type=float, default=0.05)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
-    dataset_dir = PROJECT_ROOT / "datasets" / "cof_sft"
+    dataset_dir = PROJECT_ROOT / "data_prep" / "cof_sft"
     input_path = Path(args.input) if args.input else dataset_dir / "raw.jsonl"
     output_path = Path(args.output) if args.output else dataset_dir / "metadata.jsonl"
 
@@ -166,13 +166,13 @@ def main():
     with open(output_path, "w", encoding="utf-8") as out_f:
         for i, row in enumerate(rows):
             paths = row.get("image_paths") or []
-            if len(paths) < 2:
+            if len(paths) > 2:
                 print(f"  SKIP row {i}: expected 2 image_paths, got {len(paths)}")
                 skipped += 1
                 continue
 
-            img1_path = dataset_dir / paths[0]
-            img2_path = dataset_dir / paths[1]
+            img1_path = dataset_dir/"images"/paths[0]
+            img2_path = dataset_dir/"images"/paths[1]
             if not img1_path.exists() or not img2_path.exists():
                 print(f"  SKIP row {i}: missing image(s) {img1_path} / {img2_path}")
                 skipped += 1

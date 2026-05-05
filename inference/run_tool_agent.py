@@ -8,7 +8,7 @@ Usage (via SLURM):
     sbatch slurm/run_tool_agent.slurm
 
 Usage (interactive, on a GPU node):
-    python inference/run_tool_agent.py --config configs/apertus.yaml --dataset-dir datasets/textvqa
+    python inference/run_tool_agent.py --config configs/apertus.yaml --dataset-dir data_prep/textvqa
 """
 
 import argparse
@@ -251,7 +251,7 @@ def main():
     with open(args.config) as f:
         config = yaml.safe_load(f)
 
-    dataset_dir = Path(args.dataset_dir) if args.dataset_dir else PROJECT_ROOT / "datasets" / "textvqa"
+    dataset_dir = Path(args.dataset_dir) if args.dataset_dir else PROJECT_ROOT / "data_prep" / "textvqa"
     dataset_name = dataset_dir.name
     output_dir = Path(args.output_dir) if args.output_dir else PROJECT_ROOT / "results" / dataset_name / "tool_agent"
     output_dir.mkdir(parents=True, exist_ok=True)

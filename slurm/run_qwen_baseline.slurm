@@ -47,7 +47,7 @@ check_path() {
 
 # Check datasets exist
 for DATASET in textvqa hrbench vstar pope; do
-    check_path "Dataset $DATASET" "$BASE/datasets/$DATASET/metadata.jsonl"
+    check_path "Dataset $DATASET" "$BASE/data_prep/$DATASET/metadata.jsonl"
 done
 
 # Check dependencies
@@ -69,7 +69,7 @@ for DATASET in textvqa hrbench vstar pope; do
     echo "=== Inference: $DATASET ==="
     python3 inference/run_qwen_baseline.py \
         --config configs/qwen.yaml \
-        --dataset-dir "datasets/$DATASET"
+        --dataset-dir "data_prep/$DATASET"
     echo ""
 done
 

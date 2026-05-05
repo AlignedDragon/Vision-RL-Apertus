@@ -238,7 +238,7 @@ def main():
     config = load_config(args.config)
 
     # Resolve paths
-    dataset_dir = Path(args.dataset_dir) if args.dataset_dir else PROJECT_ROOT / "datasets" / "textvqa"
+    dataset_dir = Path(args.dataset_dir) if args.dataset_dir else PROJECT_ROOT / "data_prep" / "textvqa"
     output_dir = Path(args.output_dir) if args.output_dir else PROJECT_ROOT / "results" / "textvqa" / "baseline"
     metadata_path = dataset_dir / "metadata.jsonl"
 

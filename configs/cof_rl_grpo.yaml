@@ -7,8 +7,8 @@ defaults:
   - _self_
 
 data:
-  train_files: /users/msayfiddinov/capscratch/verl-apertus/datasets/cof_rl/train.parquet
-  val_files: /users/msayfiddinov/capscratch/verl-apertus/datasets/cof_rl/val.parquet
+  train_files: /users/msayfiddinov/capscratch/verl-apertus/data_prep/cof_rl/train.parquet
+  val_files: /users/msayfiddinov/capscratch/verl-apertus/data_prep/cof_rl/val.parquet
   prompt_key: prompt
   max_prompt_length: 8192
   max_response_length: 2048
@@ -19,6 +19,9 @@ data:
     enable_thinking: true
   filter_overlong_prompts: true
   truncation: error
+  custom_cls:
+    path: /users/msayfiddinov/capscratch/verl-apertus/data_prep/apertus_rl_dataset.py
+    name: ApertusRLHFDataset
 
 actor_rollout_ref:
   hybrid_engine: true
@@ -41,6 +44,8 @@ actor_rollout_ref:
     tensor_model_parallel_size: 2
     n: 8
     log_prob_micro_batch_size_per_gpu: 4
+    agent:
+      agent_loop_config_path: /users/msayfiddinov/capscratch/verl-apertus/configs/apertus_agent_loop.yaml
     multi_turn:
       enable: true
       format: hermes

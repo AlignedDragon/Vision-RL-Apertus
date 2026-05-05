@@ -586,7 +586,7 @@ def main():
     with open(args.config) as f:
         config = yaml.safe_load(f)
 
-    dataset_dir = Path(args.dataset_dir) if args.dataset_dir else PROJECT_ROOT / "datasets" / "vtc_bench"
+    dataset_dir = Path(args.dataset_dir) if args.dataset_dir else PROJECT_ROOT / "data_prep" / "vtc_bench"
     output_dir = Path(args.output_dir) if args.output_dir else PROJECT_ROOT / "results" / "vtc_bench" / "tool_agent"
     output_dir.mkdir(parents=True, exist_ok=True)
 

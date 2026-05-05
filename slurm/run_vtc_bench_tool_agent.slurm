@@ -55,7 +55,7 @@ check_path() {
 check_path "Apertus checkpoint" "$APERTUS_CHECKPOINT/config.json"
 check_path "VQ model" "$VQ_MODEL_PATH/model.ckpt"
 check_path "Emu3.5 vision_tokenizer" "$EMU3_SRC/vision_tokenizer/__init__.py"
-check_path "Dataset metadata" "$BASE/datasets/vtc_bench/metadata.jsonl"
+check_path "Dataset metadata" "$BASE/data_prep/vtc_bench/metadata.jsonl"
 check_path "VTC-Bench opencv_interface" "$VTC_BENCH/qwen_agent/tools/opencv_interface.py"
 
 python3 -c "import einops; import cv2" 2>/dev/null && echo "  OK: deps installed" || { echo "  FAIL: missing deps (einops/opencv-python)"; ((ERROR_COUNT++)); }

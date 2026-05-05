@@ -251,7 +251,7 @@ if __name__ == "__main__":
     from transformers import AutoTokenizer
 
     p = argparse.ArgumentParser()
-    p.add_argument("--metadata", default="datasets/cof_sft/metadata.jsonl")
+    p.add_argument("--metadata", default="data_prep/cof_sft/metadata.jsonl")
     p.add_argument("--checkpoint", default=None, help="Apertus HF checkpoint dir")
     p.add_argument("--config", default="configs/apertus.yaml")
     p.add_argument("--idx", type=int, default=0)

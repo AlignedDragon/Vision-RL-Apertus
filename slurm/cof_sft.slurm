@@ -52,9 +52,9 @@ check_path() {
 
 check_path "Apertus checkpoint" "$APERTUS_CHECKPOINT/config.json"
 check_path "Apertus tokenizer" "$APERTUS_CHECKPOINT/tokenizer_config.json"
-check_path "SFT train parquet" "$BASE/datasets/cof_sft/train.parquet"
-check_path "SFT val parquet" "$BASE/datasets/cof_sft/val.parquet"
-check_path "Custom dataset class" "$BASE/datasets/cof_sft_dataset.py"
+check_path "SFT train parquet" "$BASE/data_prep/cof_sft/train.parquet"
+check_path "SFT val parquet" "$BASE/data_prep/cof_sft/val.parquet"
+check_path "Custom dataset class" "$BASE/data_prep/cof_sft_dataset.py"
 check_path "Hydra config" "$BASE/configs/sft_apertus_cof.yaml"
 
 python3 -c "import verl, transformers" 2>/dev/null \

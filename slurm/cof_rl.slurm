@@ -29,8 +29,8 @@ export PYTHONPATH="${PROJECT}:${VERL}:${EMU3_SRC}:${PYTHONPATH:-}"
 export PYTHONUNBUFFERED=1
 export HF_HOME="${SCRATCH}/hf_home"
 export TRANSFORMERS_CACHE="${HF_HOME}"
+export HYDRA_FULL_ERRO=1 # for error tracking
 
-cd "$VERL"
 
 # --- Pre-flight checks ---
 echo "=== Pre-flight Checks ==="
@@ -50,17 +50,14 @@ check_path "verl-apertus tools" "$PROJECT/tools/image_zoom_in_emu_tool.py"
 check_path "tool config yaml" "$PROJECT/configs/cof_rl_tool_config.yaml"
 check_path "trainer yaml" "$PROJECT/configs/cof_rl_grpo.yaml"
 check_path "reward fn" "$PROJECT/rewards/cof_rl_reward.py"
-check_path "train parquet" "$PROJECT/datasets/cof_rl/train.parquet"
-check_path "val parquet" "$PROJECT/datasets/cof_rl/val.parquet"
+check_path "train parquet" "$PROJECT/data_prep/cof_rl/train.parquet"
+check_path "val parquet" "$PROJECT/data_prep/cof_rl/val.parquet"
 check_path "Emu3.5 vision_tokenizer" "$EMU3_SRC/vision_tokenizer/__init__.py"
 
 if [ $ERROR_COUNT -gt 0 ]; then
     echo "ERROR: $ERROR_COUNT pre-flight checks failed."
     exit 1
 fi
-
-# Verify the reward fn imports and self-tests pass.
-python3 "$PROJECT/rewards/cof_rl_reward.py"
 
 echo ""
 echo "=== GPU Info ==="

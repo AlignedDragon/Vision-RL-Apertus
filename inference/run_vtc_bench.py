@@ -194,7 +194,7 @@ def main():
 
     config = load_config(args.config)
 
-    dataset_dir = Path(args.dataset_dir) if args.dataset_dir else PROJECT_ROOT / "datasets" / "vtc_bench"
+    dataset_dir = Path(args.dataset_dir) if args.dataset_dir else PROJECT_ROOT / "data_prep" / "vtc_bench"
     output_dir = Path(args.output_dir) if args.output_dir else PROJECT_ROOT / "results" / "vtc_bench" / "baseline"
     metadata_path = dataset_dir / "metadata.jsonl"
 
