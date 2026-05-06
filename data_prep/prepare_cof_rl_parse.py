@@ -45,7 +45,7 @@ from PIL import Image
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from inference.vision import encode_image, load_vq_model
+from inference.vision import encode_image, load_vq_model, smart_resize
 
 QWEN_TRAILER_SENTINEL = "Think in the mind first"
 APERTUS_INSTRUCTION = (
@@ -292,8 +292,10 @@ def main():
                 continue
 
             try:
-                image = Image.open(image_path)
-                image_token_str = encode_image(image, vq_model)
+                image = Image.open(image_path).convert("RGB")
+                resized = smart_resize(image)
+                resized.save(image_path)
+                image_token_str = encode_image(resized, vq_model)
             except Exception as e:
                 print(f"  SKIP row {i} (qid={qid}): IBQ encode failed: {e}")
                 skipped += 1

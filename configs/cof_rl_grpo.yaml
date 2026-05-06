@@ -17,7 +17,7 @@ data:
   return_multi_modal_inputs: false
   apply_chat_template_kwargs:
     enable_thinking: true
-  filter_overlong_prompts: true
+  filter_overlong_prompts: false
   truncation: error
   custom_cls:
     path: /users/msayfiddinov/capscratch/verl-apertus/data_prep/apertus_rl_dataset.py

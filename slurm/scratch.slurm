@@ -1,34 +1,28 @@
 #!/bin/bash
 
 set -euo pipefail
+ulimit -n 65535
 
-echo "=== Job started at $(date '+%Y-%m-%d %H:%M:%S') ==="
-
-# --- Conda ---
 source /users/msayfiddinov/capscratch/miniconda/etc/profile.d/conda.sh
 conda activate verl
 
-# --- Paths ---
-BASE="/users/$USER/capscratch/verl-apertus"
-cd "$BASE"
-
+PROJECT="/users/$USER/capscratch/verl-apertus"
+VERL="/users/$USER/capscratch/verl"
 EMU3_SRC="/users/$USER/capscratch/Emu3.5/src"
-export PYTHONPATH="${EMU3_SRC}:${BASE}:${PYTHONPATH:-}"
 
-APERTUS_CHECKPOINT="/capstor/store/cscs/swissai/infra01/MLLM/ablations/apertus-8b-img-SFT-32nodes-gbs512-mbs1-steps8030-img-text-seqlen8192-s2onlytxtloss/HF"
-VQ_MODEL_PATH="/capstor/store/cscs/swissai/infra01/MLLM/tokenizer/Emu3.5-VisionTokenizer"
+# Note: using $USER means the script is portable across cluster users.
+# Adjust EMU3_SRC if your install lives elsewhere.
 
+export PYTHONPATH="${PROJECT}:${VERL}:${EMU3_SRC}:${PYTHONPATH:-}"
+export PYTHONUNBUFFERED=1
 export HF_HOME="${SCRATCH}/hf_home"
 export TRANSFORMERS_CACHE="${HF_HOME}"
-export PYTHONUNBUFFERED=1
+export HYDRA_FULL_ERRO=1 # for error tracking
 
-# Clean stale torch extension caches (known GH200 issue)
-rm -rf ~/.cache/torch_extensions/ 2>/dev/null || true
 
 # --- Pre-flight checks ---
 echo "=== Pre-flight Checks ==="
 ERROR_COUNT=0
-
 check_path() {
     local label="$1" path="$2"
     if [ -e "$path" ]; then
@@ -39,19 +33,17 @@ check_path() {
     fi
 }
 
-check_path "Apertus checkpoint" "$APERTUS_CHECKPOINT/config.json"
-check_path "Apertus tokenizer" "$APERTUS_CHECKPOINT/tokenizer_config.json"
-check_path "VQ model" "$VQ_MODEL_PATH/model.ckpt"
+check_path "verl repo" "$VERL/verl/__init__.py"
+check_path "verl-apertus tools" "$PROJECT/tools/image_zoom_in_emu_tool.py"
+check_path "tool config yaml" "$PROJECT/configs/cof_rl_tool_config.yaml"
+check_path "trainer yaml" "$PROJECT/configs/cof_rl_grpo.yaml"
+check_path "reward fn" "$PROJECT/rewards/cof_rl_reward.py"
+check_path "train parquet" "$PROJECT/data_prep/cof_rl/train.parquet"
+check_path "val parquet" "$PROJECT/data_prep/cof_rl/val.parquet"
 check_path "Emu3.5 vision_tokenizer" "$EMU3_SRC/vision_tokenizer/__init__.py"
-check_path "raw.jsonl from download step" "$BASE/data_prep/cof_rl/raw.jsonl"
-check_path "images dir from download step" "$BASE/data_prep/cof_rl/images"
-
-python3 -c "import einops" 2>/dev/null && echo "  OK: einops installed" || { echo "  FAIL: einops not installed"; ((ERROR_COUNT++)); }
 
 if [ $ERROR_COUNT -gt 0 ]; then
-    echo ""
     echo "ERROR: $ERROR_COUNT pre-flight checks failed."
-    echo "Hint: run data_prep/prepare_cof_rl_download.py on the login node first."
     exit 1
 fi
 
@@ -60,10 +52,11 @@ echo "=== GPU Info ==="
 nvidia-smi --list-gpus
 echo ""
 
-# --- Run parse ---
-echo "=== Starting Parse ==="
-python3 data_prep/prepare_cof_sft_parse.py --config configs/apertus.yaml
-echo ""
+echo "== Job started at $(date)"
+echo "=== Starting GRPO training ==="
+python3 -m verl.trainer.main_ppo \
+    --config-path="$PROJECT/configs" \
+    --config-name=cof_rl_grpo "$@"
 
-echo "=== Job ended at $(date '+%Y-%m-%d %H:%M:%S') ==="
+echo "=== Job ended at $(date) ==="
 echo "=== Job Complete ==="

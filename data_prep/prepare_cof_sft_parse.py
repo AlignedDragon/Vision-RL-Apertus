@@ -1,18 +1,27 @@
 """Parse CoF-SFT-Data raw.jsonl into Apertus-formatted SFT examples.
 
-Per row, render a full Apertus conversation:
+Each raw row encodes an N-image trajectory (N >= 1): one user image plus
+(N-1) tool-response images produced by image_zoom_in_tool calls. The
+source `messages` array is always `2N + 1` long: system, user, then
+(assistant=tool_call, user=tool_response) repeated (N-1) times, then a
+final assistant=answer turn.
+
+Per row, render an Apertus conversation:
   - system:    "You are a helpful assistant."
   - developer: source tool (image_zoom_in_tool) + display_answers, rendered via tools=
   - user:      original question with first <image> replaced by IBQ tokens for image_paths[0],
                Qwen "Think in the mind first..." trailer stripped, Apertus instruction appended
-  - assistant: thoughts + tool_calls (extracted from <think>...</think> + <tool_call>...</tool_call>)
-  - tool:      IBQ tokens for image_paths[1] only (no surrounding text)
+  - for k in 1..N-1:
+      - assistant: thoughts + tool_calls (from <think>...</think> + <tool_call>...</tool_call>)
+      - tool:      IBQ tokens for image_paths[k] (no surrounding text)
   - assistant: thoughts + display_answers tool call (final <answer>...</answer> wrapped)
+
+Trajectories with N > 5 are skipped to keep training sequences bounded.
 
 Output records:
     {
       "text": str,                 # full rendered Apertus conversation
-      "image_paths": [str, str]    # absolute paths: [user image, tool-response image]
+      "image_paths": list[str]     # absolute paths, length N
     }
 
 Usage (interactive on a GPU node):
@@ -45,6 +54,7 @@ from data_prep.prepare_cof_rl_parse import (
     extract_tool_def,
     load_config,
 )
+from inference.vision import smart_resize
 
 # SFT keeps multi-word ground-truths, so the instruction must accept any answer
 # string (RL drops multi-word answers and instructs "single word"). The single
@@ -65,15 +75,23 @@ def build_user_text(raw_user_text: str, image_token_str: str) -> str:
     return f"{head}\n\n{APERTUS_INSTRUCTION}"
 
 
-def parse_intermediate_assistant(text: str) -> tuple[str, dict]:
-    """Extract <think> + <tool_call> from an intermediate assistant turn."""
+def parse_intermediate_assistant(text: str) -> tuple[str, str, dict]:
+    """Extract <think> + <tool_call>; return (thoughts, name, args_dict)."""
     think_m = THINK_RE.search(text)
     call_m = TOOL_CALL_RE.search(text)
     if not think_m or not call_m:
         raise ValueError("intermediate assistant missing <think> or <tool_call>")
     call_obj = json.loads(call_m.group(1).strip())
-    args_str = json.dumps(call_obj["arguments"], ensure_ascii=False, separators=(", ", ": "))
-    return think_m.group(1).strip(), {"name": call_obj["name"], "arguments": args_str}
+    return think_m.group(1).strip(), call_obj["name"], call_obj["arguments"]
+
+
+def _scale_bbox(bbox, src_size, dst_size):
+    """Scale [x1,y1,x2,y2] from src (w,h) to dst (w,h)."""
+    sw, sh = src_size
+    dw, dh = dst_size
+    sx, sy = dw / sw, dh / sh
+    x1, y1, x2, y2 = bbox
+    return [round(x1 * sx), round(y1 * sy), round(x2 * sx), round(y2 * sy)]
 
 
 def parse_final_assistant(text: str) -> tuple[str, dict]:
@@ -86,30 +104,56 @@ def parse_final_assistant(text: str) -> tuple[str, dict]:
     return think_m.group(1).strip(), {"name": "display_answers", "arguments": args_str}
 
 
-def build_messages(src_msgs: list, image1_tokens: str, image2_tokens: str) -> list:
-    """Convert a 5-message Qwen conversation into Apertus messages.
+def build_messages(
+    src_msgs: list,
+    image_token_strs: list[str],
+    orig_sizes: list[tuple[int, int]],
+    resized_sizes: list[tuple[int, int]],
+) -> list:
+    """Render an Apertus conversation for an N-image trajectory (N >= 1).
 
-    Source order: system, user, assistant, user(=tool response), assistant.
+    Source layout (always 2N+1 messages):
+        system, user,
+        (assistant=tool_call, user=tool_response) * (N-1),
+        assistant=answer.
+    `image_token_strs[k]` are the IBQ tokens for `image_paths[k]`.
+    `orig_sizes[k]` / `resized_sizes[k]` are (w, h) of image k before/after
+    smart_resize; used to rescale bbox_2d in tool calls (a bbox emitted at
+    step k was produced while looking at image k-1).
     """
-    raw_user = next(m["content"] for m in src_msgs if m["role"] == "user")
-    asst_msgs = [m for m in src_msgs if m["role"] == "assistant"]
-    if len(asst_msgs) != 2:
-        raise ValueError(f"expected 2 assistant turns, got {len(asst_msgs)}")
-    th1, call1 = parse_intermediate_assistant(asst_msgs[0]["content"])
-    th2, call2 = parse_final_assistant(asst_msgs[1]["content"])
-    return [
+    n = len(image_token_strs)
+    if n < 1:
+        raise ValueError("need at least one image")
+    if len(src_msgs) != 2 * n + 1:
+        raise ValueError(
+            f"expected {2 * n + 1} source messages for {n} images, got {len(src_msgs)}"
+        )
+
+    raw_user = src_msgs[1]["content"]
+    out = [
         {"role": "system", "content": APERTUS_SYSTEM},
-        {"role": "user", "content": build_user_text(raw_user, image1_tokens)},
-        {"role": "assistant", "content": {"blocks": [
-            {"type": "thoughts", "text": th1},
-            {"type": "tool_calls", "calls": [call1]},
-        ]}},
-        {"role": "tool", "content": image2_tokens},
-        {"role": "assistant", "content": {"blocks": [
-            {"type": "thoughts", "text": th2},
-            {"type": "tool_calls", "calls": [call2]},
-        ]}},
+        {"role": "user", "content": build_user_text(raw_user, image_token_strs[0])},
     ]
+
+    for k in range(1, n):
+        th, name, args = parse_intermediate_assistant(src_msgs[2 * k]["content"])
+        if "bbox_2d" in args:
+            args = {**args, "bbox_2d": _scale_bbox(
+                args["bbox_2d"], orig_sizes[k - 1], resized_sizes[k - 1]
+            )}
+        args_str = json.dumps(args, ensure_ascii=False, separators=(", ", ": "))
+        out.append({"role": "assistant", "content": {"blocks": [
+            {"type": "thoughts", "text": th},
+            {"type": "tool_calls", "calls": [{"name": name, "arguments": args_str}]},
+        ]}})
+        out.append({"role": "tool", "content": image_token_strs[k]})
+
+    th_final, call_final = parse_final_assistant(src_msgs[2 * n]["content"])
+    out.append({"role": "assistant", "content": {"blocks": [
+        {"type": "thoughts", "text": th_final},
+        {"type": "tool_calls", "calls": [call_final]},
+    ]}})
+    return out
 
 
 def main():
@@ -166,28 +210,36 @@ def main():
     with open(output_path, "w", encoding="utf-8") as out_f:
         for i, row in enumerate(rows):
             paths = row.get("image_paths") or []
-            if len(paths) > 2:
-                print(f"  SKIP row {i}: expected 2 image_paths, got {len(paths)}")
+            if not (1 <= len(paths) <= 2):
+                print(f"  SKIP row {i}: image_paths count {len(paths)} outside [1, 5]")
                 skipped += 1
                 continue
 
-            img1_path = dataset_dir/"images"/paths[0]
-            img2_path = dataset_dir/"images"/paths[1]
-            if not img1_path.exists() or not img2_path.exists():
-                print(f"  SKIP row {i}: missing image(s) {img1_path} / {img2_path}")
+            img_paths = [dataset_dir / "images" / p for p in paths]
+            missing = [p for p in img_paths if not p.exists()]
+            if missing:
+                print(f"  SKIP row {i}: missing image(s) {missing}")
                 skipped += 1
                 continue
 
             try:
-                img1_tokens = encode_image(Image.open(img1_path), vq_model)
-                img2_tokens = encode_image(Image.open(img2_path), vq_model)
+                img_tokens: list[str] = []
+                orig_sizes: list[tuple[int, int]] = []
+                resized_sizes: list[tuple[int, int]] = []
+                for p in img_paths:
+                    img = Image.open(p).convert("RGB")
+                    orig_sizes.append(img.size)
+                    resized = smart_resize(img)
+                    resized_sizes.append(resized.size)
+                    resized.save(p)
+                    img_tokens.append(encode_image(resized, vq_model))
             except Exception as e:
                 print(f"  SKIP row {i}: IBQ encode failed: {e}")
                 skipped += 1
                 continue
 
             try:
-                messages = build_messages(row["messages"], img1_tokens, img2_tokens)
+                messages = build_messages(row["messages"], img_tokens, orig_sizes, resized_sizes)
             except Exception as e:
                 print(f"  SKIP row {i}: message build failed: {e}")
                 skipped += 1
@@ -203,7 +255,7 @@ def main():
 
             out_f.write(json.dumps({
                 "text": text,
-                "image_paths": [str(img1_path), str(img2_path)],
+                "image_paths": [str(p) for p in img_paths],
             }, ensure_ascii=False) + "\n")
             text_lens.append(len(text))
 

@@ -41,7 +41,7 @@ class ImageZoomInEmuTool(BaseTool):
         self.vq_model_path: str = config["vq_model_path"]
         self.vq_device: str = config.get("vq_device", "cuda:0")
         self.target_area: int = int(config.get("target_area", 512 * 512))
-        self.min_dimension: int = int(config.get("min_dimension", 28))
+        self.min_dimension: int = int(config.get("min_dimension", 16))
 
         self._instance_dict: dict[str, dict[str, Any]] = {}
         self._vq_model = None
