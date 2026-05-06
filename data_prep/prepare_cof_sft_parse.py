@@ -119,7 +119,7 @@ def build_messages(
     `image_token_strs[k]` are the IBQ tokens for `image_paths[k]`.
     `orig_sizes[k]` / `resized_sizes[k]` are (w, h) of image k before/after
     smart_resize; used to rescale bbox_2d in tool calls (a bbox emitted at
-    step k was produced while looking at image k-1).
+    step k was produced while looking at image 0).
     """
     n = len(image_token_strs)
     if n < 1:
@@ -139,7 +139,7 @@ def build_messages(
         th, name, args = parse_intermediate_assistant(src_msgs[2 * k]["content"])
         if "bbox_2d" in args:
             args = {**args, "bbox_2d": _scale_bbox(
-                args["bbox_2d"], orig_sizes[k - 1], resized_sizes[k - 1]
+                args["bbox_2d"], orig_sizes[0], resized_sizes[0]
             )}
         args_str = json.dumps(args, ensure_ascii=False, separators=(", ", ": "))
         out.append({"role": "assistant", "content": {"blocks": [
@@ -210,7 +210,7 @@ def main():
     with open(output_path, "w", encoding="utf-8") as out_f:
         for i, row in enumerate(rows):
             paths = row.get("image_paths") or []
-            if not (1 <= len(paths) <= 2):
+            if not (1 <= len(paths) <= 3):
                 print(f"  SKIP row {i}: image_paths count {len(paths)} outside [1, 5]")
                 skipped += 1
                 continue
@@ -300,6 +300,10 @@ def main():
         pq.write_table(pa.Table.from_pylist(val_recs), val_out)
         print(f"\nWrote {len(train_recs)} rows to {train_out}")
         print(f"Wrote {len(val_recs)} rows to {val_out}")
+        print(''' ! WARNING: This file rewrites the original images.
+                    If you try to rerun this file, it will cause errors.
+                    For a second run, you should run prepare_cof_sft_download.py first.
+                ''')
 
 
 if __name__ == "__main__":

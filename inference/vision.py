@@ -47,7 +47,7 @@ def load_vq_model(path: str, device: str = "cuda:0"):
     return build_vision_tokenizer("ibq", path, device=device)
 
 
-def smart_resize(image: Image.Image, target_area: int = 512 * 512, ds_factor: int = 16) -> Image.Image:
+def smart_resize_emu_style(image: Image.Image, target_area: int = 512 * 512, ds_factor: int = 16) -> Image.Image:
     """Resize image to target pixel area, maintaining aspect ratio.
 
     Dimensions are rounded to the nearest multiple of ds_factor because the
@@ -65,6 +65,21 @@ def smart_resize(image: Image.Image, target_area: int = 512 * 512, ds_factor: in
     # Round to nearest multiple of ds_factor
     new_h = ((new_h + ds_factor // 2) // ds_factor) * ds_factor
     new_w = ((new_w + ds_factor // 2) // ds_factor) * ds_factor
+    return image.resize((new_w, new_h), Image.BICUBIC)/
+
+def smart_resize(image: Image.Image, ds_factor: int = 16) -> Image.Image:
+    """
+    Dimensions are rounded to the nearest multiple of ds_factor because the
+    IBQ encoder downsamples by 16x (encoder stride).
+
+    Args:
+        image: Input PIL image.
+        target_area: Target total pixel count (default 512*512 = 262144).
+        ds_factor: Spatial downsampling factor of the IBQ encoder.
+    """
+    w, h = image.size
+    new_h = ((h + ds_factor // 2) // ds_factor) * ds_factor
+    new_w = ((w + ds_factor // 2) // ds_factor) * ds_factor
     return image.resize((new_w, new_h), Image.BICUBIC)
 
 
