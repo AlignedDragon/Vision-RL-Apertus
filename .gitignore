@@ -2,6 +2,7 @@
 data_prep/*/
 results/
 slurm/*/
+plans/
 
 # Python
 __pycache__/
