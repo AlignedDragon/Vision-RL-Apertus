@@ -17,9 +17,12 @@ Token convention (Apertus, NOT Emu3.5):
 Requires: ~/Emu3.5/src on PYTHONPATH (for vision_tokenizer.build_vision_tokenizer)
 """
 
+import math
+
 import numpy as np
 import torch
 from PIL import Image
+
 
 
 # Apertus special token strings (different from Emu3.5's naming)
@@ -47,41 +50,44 @@ def load_vq_model(path: str, device: str = "cuda:0"):
     return build_vision_tokenizer("ibq", path, device=device)
 
 
-def smart_resize_emu_style(image: Image.Image, target_area: int = 512 * 512, ds_factor: int = 16) -> Image.Image:
-    """Resize image to target pixel area, maintaining aspect ratio.
+def smart_resize(
+    image: Image.Image,
+    min_patches: int = 1,
+    max_patches: int = 2048,
+    ds_factor: int = 16,
+) -> Image.Image:
+    """Resize image so its IBQ token count lies in [min_patches, max_patches].
 
-    Dimensions are rounded to the nearest multiple of ds_factor because the
-    IBQ encoder downsamples by 16x (encoder stride).
-
-    Args:
-        image: Input PIL image.
-        target_area: Target total pixel count (default 512*512 = 262144).
-        ds_factor: Spatial downsampling factor of the IBQ encoder.
-    """
-    w, h = image.size
-    aspect = w / h
-    new_h = int((target_area / aspect) ** 0.5)
-    new_w = int(new_h * aspect)
-    # Round to nearest multiple of ds_factor
-    new_h = ((new_h + ds_factor // 2) // ds_factor) * ds_factor
-    new_w = ((new_w + ds_factor // 2) // ds_factor) * ds_factor
-    return image.resize((new_w, new_h), Image.BICUBIC)/
-
-def smart_resize(image: Image.Image, ds_factor: int = 16) -> Image.Image:
-    """
-    Dimensions are rounded to the nearest multiple of ds_factor because the
-    IBQ encoder downsamples by 16x (encoder stride).
+    Each "patch" is one IBQ token (a ds_factor x ds_factor pixel block, since
+    the encoder has stride ds_factor). Pixel dimensions are snapped to multiples
+    of ds_factor so the encoder produces an exact (h/ds_factor, w/ds_factor)
+    token grid; if the resulting grid would have too many or too few tokens,
+    the image is rescaled (aspect-preserving) before snapping.
 
     Args:
         image: Input PIL image.
-        target_area: Target total pixel count (default 512*512 = 262144).
-        ds_factor: Spatial downsampling factor of the IBQ encoder.
+        min_patches: Minimum total tokens. Image is upscaled if it would emit fewer.
+        max_patches: Maximum total tokens. Image is downscaled if it would emit more.
+        ds_factor: IBQ encoder stride.
     """
     w, h = image.size
-    new_h = ((h + ds_factor // 2) // ds_factor) * ds_factor
-    new_w = ((w + ds_factor // 2) // ds_factor) * ds_factor
+    if h < ds_factor or w < ds_factor:
+        raise ValueError(f"height:{h} or width:{w} must be >= ds_factor:{ds_factor}")
+
+    new_h = round(h / ds_factor) * ds_factor
+    new_w = round(w / ds_factor) * ds_factor
+    patches = (new_h // ds_factor) * (new_w // ds_factor)
+
+    if patches > max_patches:
+        scale = math.sqrt(patches / max_patches)
+        new_h = max(ds_factor, math.floor(h / scale / ds_factor) * ds_factor)
+        new_w = max(ds_factor, math.floor(w / scale / ds_factor) * ds_factor)
+    elif patches < min_patches:
+        scale = math.sqrt(min_patches / patches)
+        new_h = math.ceil(h * scale / ds_factor) * ds_factor
+        new_w = math.ceil(w * scale / ds_factor) * ds_factor
+
     return image.resize((new_w, new_h), Image.BICUBIC)
-
 
 def format_image_tokens(token_grid: torch.Tensor) -> str:
     """Format IBQ codebook indices into Apertus image token string.
@@ -102,12 +108,17 @@ def format_image_tokens(token_grid: torch.Tensor) -> str:
 
 
 @torch.no_grad()
-def encode_image(image: Image.Image, vq_model, target_area: int = 512 * 512) -> str:
+def encode_image(
+    image: Image.Image,
+    vq_model,
+    min_patches: int = 1,
+    max_patches: int = 2048,
+) -> str:
     """Encode a PIL image to an Apertus image token string.
 
     Full pipeline:
     1. Convert to RGB
-    2. Resize to target area (aspect-preserving, dims divisible by 16)
+    2. Resize so token count is in [min_patches, max_patches] (aspect-preserving, dims divisible by 16)
     3. Normalize pixels to [-1, 1]
     4. Run IBQ encoder → codebook indices
     5. Reshape to 2D grid (h/16, w/16)
@@ -116,13 +127,14 @@ def encode_image(image: Image.Image, vq_model, target_area: int = 512 * 512) -> 
     Args:
         image: Input PIL image.
         vq_model: Loaded IBQ vision tokenizer.
-        target_area: Target pixel area for resizing.
+        min_patches: Minimum number of IBQ tokens.
+        max_patches: Maximum number of IBQ tokens.
 
     Returns:
         Formatted image token string ready for prompt insertion.
     """
     image = image.convert("RGB")
-    image = smart_resize(image, target_area)
+    image = smart_resize(image, min_patches=min_patcheses, max_patches=max_patches)
     w, h = image.size
 
     device = next(vq_model.parameters()).device
