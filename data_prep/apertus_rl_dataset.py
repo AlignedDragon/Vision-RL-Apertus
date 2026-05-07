@@ -27,8 +27,11 @@ class ApertusRLHFDataset(RLHFDataset):
         # RLHFDataset.__init__ runs prompt-length filtering inside
         # _read_files_and_tokenize, so we must unwrap before super() — otherwise
         # the filter applies the chat template with wrapped tool schemas and crashes.
-        if self.tool_schemas:
-            self.tool_schemas = [_unwrap_openai_function(s) for s in self.tool_schemas]
+        # Some verl versions call this before tool_schemas is set on self, so
+        # access defensively via getattr.
+        tool_schemas = getattr(self, "tool_schemas", None)
+        if tool_schemas:
+            self.tool_schemas = [_unwrap_openai_function(s) for s in tool_schemas]
         super()._read_files_and_tokenize()
 
 

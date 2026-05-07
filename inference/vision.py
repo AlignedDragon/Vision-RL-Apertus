@@ -111,7 +111,7 @@ def format_image_tokens(token_grid: torch.Tensor) -> str:
 def encode_image(
     image: Image.Image,
     vq_model,
-    min_patches: int = 1,
+    min_patches: int = 8,
     max_patches: int = 2048,
 ) -> str:
     """Encode a PIL image to an Apertus image token string.

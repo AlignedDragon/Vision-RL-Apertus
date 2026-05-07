@@ -30,6 +30,7 @@ export PYTHONUNBUFFERED=1
 export HF_HOME="${SCRATCH}/hf_home"
 export TRANSFORMERS_CACHE="${HF_HOME}"
 export HYDRA_FULL_ERRO=1 # for error tracking
+export WANDB_MODE=offline
 
 
 # --- Pre-flight checks ---
@@ -66,6 +67,10 @@ echo ""
 
 echo "== Job started at $(date)"
 echo "=== Starting GRPO training ==="
+# Run from PROJECT so `python -m` does not put /workspace/src/verl (the
+# container's bundled, outdated verl) on sys.path[0] and shadow the editable
+# install at /capstor/.../verl.
+cd "$PROJECT"
 python3 -m verl.trainer.main_ppo \
     --config-path="$PROJECT/configs" \
     --config-name=cof_rl_grpo "$@"
