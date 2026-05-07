@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=prepare_cof_rl
+#SBATCH --job-name=prepare_cof_sft
 #SBATCH --account=infra01
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1

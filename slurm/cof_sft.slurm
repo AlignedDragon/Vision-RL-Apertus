@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=64
 #SBATCH --mem=460000
 #SBATCH --time=10:00:00
-#SBATCH --environment=verl
+#SBATCH --environment=verl_env
 #SBATCH --partition=normal
 #SBATCH --gpus-per-node=4
 #SBATCH --output=logs/%x_%j.out
@@ -17,7 +17,7 @@ set -euo pipefail
 echo "=== Job started at $(date '+%Y-%m-%d %H:%M:%S') ==="
 
 # --- Conda ---
-source ~/miniconda3/etc/profile.d/conda.sh
+source /users/msayfiddinov/capscratch/miniconda/etc/profile.d/conda.sh
 conda activate verl
 
 # --- Paths ---
@@ -55,7 +55,7 @@ check_path "Apertus tokenizer" "$APERTUS_CHECKPOINT/tokenizer_config.json"
 check_path "SFT train parquet" "$BASE/data_prep/cof_sft/train.parquet"
 check_path "SFT val parquet" "$BASE/data_prep/cof_sft/val.parquet"
 check_path "Custom dataset class" "$BASE/data_prep/cof_sft_dataset.py"
-check_path "Hydra config" "$BASE/configs/sft_apertus_cof.yaml"
+check_path "Hydra config" "$BASE/configs/cof_sft.yaml"
 
 python3 -c "import verl, transformers" 2>/dev/null \
     && echo "  OK: verl + transformers importable" \
@@ -86,7 +86,10 @@ echo ""
 # --- Launch SFT ---
 echo "=== Starting SFT Training ==="
 srun --nodes="$SLURM_NNODES" --ntasks-per-node=1 --gpus-per-node="$SLURM_GPUS_ON_NODE" \
-    bash -c "torchrun \
+    bash -c "source /users/$USER/capscratch/miniconda/etc/profile.d/conda.sh && \
+    conda activate verl && \
+    cd $BASE && \
+    torchrun \
         --nnodes=$SLURM_NNODES \
         --nproc-per-node=$SLURM_GPUS_ON_NODE \
         --rdzv-id=$RDZV_ID \

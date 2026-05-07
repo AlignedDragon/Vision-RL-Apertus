@@ -134,7 +134,7 @@ def encode_image(
         Formatted image token string ready for prompt insertion.
     """
     image = image.convert("RGB")
-    image = smart_resize(image, min_patches=min_patcheses, max_patches=max_patches)
+    image = smart_resize(image, min_patches=min_patches, max_patches=max_patches)
     w, h = image.size
 
     device = next(vq_model.parameters()).device

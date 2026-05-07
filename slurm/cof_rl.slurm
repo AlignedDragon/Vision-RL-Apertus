@@ -30,7 +30,7 @@ export PYTHONUNBUFFERED=1
 export HF_HOME="${SCRATCH}/hf_home"
 export TRANSFORMERS_CACHE="${HF_HOME}"
 export HYDRA_FULL_ERRO=1 # for error tracking
-export WANDB_MODE=offline
+export WANDB_MODE=online
 
 
 # --- Pre-flight checks ---
