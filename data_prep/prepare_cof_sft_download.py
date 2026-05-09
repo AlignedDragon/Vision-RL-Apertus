@@ -55,13 +55,19 @@ def download_dataset(output_dir: Path, split: str = "train") -> int:
 
 
 def download_and_extract_images(output_dir: Path):
-    """Download images.zip from HF and extract into output_dir/images/."""
+    """Download images.zip from HF and extract into output_dir/images_original/.
+
+    The pristine downloads live under images_original/. The parse step then
+    reads from images_original/ and writes resized/cropped artifacts into
+    images/ — so this script can be re-run safely without losing the
+    originals to in-place rewrites.
+    """
     from huggingface_hub import hf_hub_download
 
-    images_dir = output_dir / "images"
-    if images_dir.exists() and any(images_dir.iterdir()):
-        count = sum(1 for _ in images_dir.rglob("*") if _.is_file())
-        print(f"images/ already populated ({count} files), skipping extraction")
+    originals_dir = output_dir / "images_original"
+    if originals_dir.exists() and any(originals_dir.iterdir()):
+        count = sum(1 for _ in originals_dir.rglob("*") if _.is_file())
+        print(f"images_original/ already populated ({count} files), skipping extraction")
         return
 
     print("Downloading images.zip ...")
@@ -72,14 +78,26 @@ def download_and_extract_images(output_dir: Path):
     )
     print(f"Got {zip_path}")
 
-    images_dir.mkdir(parents=True, exist_ok=True)
-    print(f"Extracting into {images_dir} ...")
+    originals_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Extracting into {originals_dir} ...")
     with zipfile.ZipFile(zip_path) as zf:
-        # The zip contains entries like "images/foo.jpg"; extract directly into output_dir
-        # so paths line up with what we wrote in raw.jsonl.
-        zf.extractall(output_dir)
+        for member in zf.infolist():
+            if member.is_dir():
+                continue
+            # Strip leading "images/" so files land directly in images_original/.
+            name = member.filename
+            if name.startswith("images/"):
+                name = name[len("images/"):]
+            elif name.startswith("./images/"):
+                name = name[len("./images/"):]
+            if not name:
+                continue
+            target = originals_dir / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with zf.open(member) as src, open(target, "wb") as dst:
+                dst.write(src.read())
 
-    count = sum(1 for _ in images_dir.rglob("*") if _.is_file())
+    count = sum(1 for _ in originals_dir.rglob("*") if _.is_file())
     print(f"Extracted {count} files")
 
 

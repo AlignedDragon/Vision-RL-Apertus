@@ -16,7 +16,7 @@ Per row, render an Apertus conversation:
       - tool:      IBQ tokens for image_paths[k] (no surrounding text)
   - assistant: thoughts + display_answers tool call (final <answer>...</answer> wrapped)
 
-Trajectories with N > 5 are skipped to keep training sequences bounded.
+Trajectories with N > 3 are skipped to keep training sequences bounded.
 
 Output records:
     {
@@ -207,16 +207,19 @@ def main():
     text_lens: list[int] = []
     start = time.time()
 
+    src_dir = dataset_dir / "images_original"
+    out_img_dir = dataset_dir / "images"
+
     with open(output_path, "w", encoding="utf-8") as out_f:
         for i, row in enumerate(rows):
             paths = row.get("image_paths") or []
             if not (1 <= len(paths) <= 3):
-                print(f"  SKIP row {i}: image_paths count {len(paths)} outside [1, 5]")
+                print(f"  SKIP row {i}: image_paths count {len(paths)} outside [1, 3]")
                 skipped += 1
                 continue
 
-            img_paths = [dataset_dir / "images" / p for p in paths]
-            missing = [p for p in img_paths if not p.exists()]
+            src_paths = [src_dir / p for p in paths]
+            missing = [p for p in src_paths if not p.exists()]
             if missing:
                 print(f"  SKIP row {i}: missing image(s) {missing}")
                 skipped += 1
@@ -226,12 +229,34 @@ def main():
                 img_tokens: list[str] = []
                 orig_sizes: list[tuple[int, int]] = []
                 resized_sizes: list[tuple[int, int]] = []
-                for p in img_paths:
-                    img = Image.open(p).convert("RGB")
+                img_paths: list[Path] = []
+                for k, (p_src, p_rel) in enumerate(zip(src_paths, paths)):
+                    img = Image.open(p_src).convert("RGB")
                     orig_sizes.append(img.size)
-                    resized = smart_resize(img)
+                    if k == 0:
+                        resized = smart_resize(img)
+                    else:
+                        # Crops were cut from the original at original-coord
+                        # bboxes; rescale them by the same factor as the bbox
+                        # (resized_sizes[0] / orig_sizes[0]) so their pixel
+                        # dims stay consistent with the rescaled bbox coords.
+                        sx = resized_sizes[0][0] / orig_sizes[0][0]
+                        sy = resized_sizes[0][1] / orig_sizes[0][1]
+                        cw, ch = img.size
+                        new_w, new_h = round(cw * sx), round(ch * sy)
+                        if new_w < 16 or new_h < 16:
+                            raise ValueError(
+                                f"crop {k} too small after rescale: {new_w}x{new_h}"
+                            )
+                        scaled = img.resize((new_w, new_h), Image.BICUBIC)
+                        resized = smart_resize(scaled)
                     resized_sizes.append(resized.size)
-                    resized.save(p)
+
+                    out_p = out_img_dir / p_rel
+                    out_p.parent.mkdir(parents=True, exist_ok=True)
+                    resized.save(out_p)
+                    img_paths.append(out_p)
+
                     img_tokens.append(encode_image(resized, vq_model))
             except Exception as e:
                 print(f"  SKIP row {i}: IBQ encode failed: {e}")
@@ -300,10 +325,8 @@ def main():
         pq.write_table(pa.Table.from_pylist(val_recs), val_out)
         print(f"\nWrote {len(train_recs)} rows to {train_out}")
         print(f"Wrote {len(val_recs)} rows to {val_out}")
-        print(''' ! WARNING: This file rewrites the original images.
-                    If you try to rerun this file, it will cause errors.
-                    For a second run, you should run prepare_cof_sft_download.py first.
-                ''')
+        print(f"\nReady. Originals are preserved under {src_dir}; processed "
+              f"artifacts written to {out_img_dir}.")
 
 
 if __name__ == "__main__":

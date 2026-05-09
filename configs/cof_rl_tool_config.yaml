@@ -4,8 +4,7 @@ tools:
       type: native
       vq_model_path: /capstor/store/cscs/swissai/infra01/MLLM/tokenizer/Emu3.5-VisionTokenizer
       vq_device: cuda:0
-      target_area: 262144
-      min_dimension: 28
+      min_dimension: 16
     tool_schema:
       type: function
       function:

@@ -3,6 +3,9 @@ data_prep/*/
 results/
 slurm/*/
 plans/
+wandb/
+outputs/
+checkpoints/
 
 # Python
 __pycache__/

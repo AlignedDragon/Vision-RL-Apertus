@@ -40,7 +40,6 @@ class ImageZoomInEmuTool(BaseTool):
         super().__init__(config, tool_schema)
         self.vq_model_path: str = config["vq_model_path"]
         self.vq_device: str = config.get("vq_device", "cuda:0")
-        self.target_area: int = int(config.get("target_area", 512 * 512))
         self.min_dimension: int = int(config.get("min_dimension", 16))
 
         self._instance_dict: dict[str, dict[str, Any]] = {}
@@ -59,19 +58,19 @@ class ImageZoomInEmuTool(BaseTool):
             return False
         h = bottom - top
         w = right - left
-        if min(h, w) == 0:
+        if h < self.min_dimension or w < self.min_dimension:
             return False
         if max(h, w) / min(h, w) > 100:
             return False
         return True
 
-    def _maybe_resize_bbox(
+    def _sanitize_bbox(
         self, bbox_2d: list[float], image_width: int, image_height: int
     ) -> Optional[list[int]]:
-        """Clamp, validate, and (if too small) recenter-expand the bbox.
+        """Clamp the bbox to image bounds, validate, and snap to int coords.
 
-        Returns int coordinates [x1, y1, x2, y2] inside the image, with both
-        sides >= self.min_dimension. Returns None if no valid box can be made.
+        Returns int [x1, y1, x2, y2] inside the image, with both sides
+        >= self.min_dimension, or None if the bbox is invalid.
         """
         left = max(0.0, float(bbox_2d[0]))
         top = max(0.0, float(bbox_2d[1]))
@@ -81,43 +80,7 @@ class ImageZoomInEmuTool(BaseTool):
         if not self._validate_bbox(left, top, right, bottom):
             return None
 
-        h = bottom - top
-        w = right - left
-
-        if h < self.min_dimension or w < self.min_dimension:
-            cx = (left + right) / 2.0
-            cy = (top + bottom) / 2.0
-            min_side = min(h, w)
-            if min_side == 0:
-                return None
-            ratio = self.min_dimension / min_side
-            target_w = w * ratio
-            target_h = h * ratio
-            if target_w > image_width:
-                target_h *= image_width / target_w
-                target_w = image_width
-            if target_h > image_height:
-                target_w *= image_height / target_h
-                target_h = image_height
-            left = cx - target_w / 2.0
-            top = cy - target_h / 2.0
-            if left < 0:
-                left = 0.0
-            if top < 0:
-                top = 0.0
-            if left + target_w > image_width:
-                left = image_width - target_w
-            if top + target_h > image_height:
-                top = image_height - target_h
-            right = left + target_w
-            bottom = top + target_h
-
-        l, t, r, b = floor(left), floor(top), ceil(right), ceil(bottom)
-        if not self._validate_bbox(l, t, r, b):
-            return None
-        if (b - t) < self.min_dimension or (r - l) < self.min_dimension:
-            return None
-        return [l, t, r, b]
+        return [floor(left), floor(top), ceil(right), ceil(bottom)]
 
     def get_openai_tool_schema(self) -> OpenAIFunctionToolSchema:
         return self.tool_schema
@@ -176,13 +139,13 @@ class ImageZoomInEmuTool(BaseTool):
             )
 
         image: Image.Image = entry["image"]
-        sanitized = self._maybe_resize_bbox(bbox_floats, image.width, image.height)
+        sanitized = self._sanitize_bbox(bbox_floats, image.width, image.height)
         if sanitized is None:
             return (
                 ToolResponse(
                     text=(
-                        f"Error: bbox {bbox_2d} is invalid or smaller than the minimum "
-                        f"size of {self.min_dimension}x{self.min_dimension} after clamping."
+                        f"Error: bbox {bbox_2d} is invalid or has a side smaller "
+                        f"than {self.min_dimension}px after clamping to the image."
                     )
                 ),
                 0.0,
@@ -192,7 +155,7 @@ class ImageZoomInEmuTool(BaseTool):
         try:
             self._ensure_vq_model()
             cropped = image.crop(tuple(sanitized))
-            token_str = encode_image(cropped, self._vq_model, target_area=self.target_area)
+            token_str = encode_image(cropped, self._vq_model)
         except Exception as e:
             logger.warning(f"image_zoom_in_tool encoding failed: {e}")
             return (
