@@ -71,6 +71,7 @@ def compute_train_spans(text: str) -> list[tuple[int, int]]:
     spans: list[tuple[int, int]] = []
     pos = 0
     while True:
+        # go through the text and anchor on <|assistant_start|> ... <|assistant_end|> blocks
         s = text.find(A_START, pos)
         if s < 0:
             break
@@ -81,20 +82,21 @@ def compute_train_spans(text: str) -> list[tuple[int, int]]:
         mask_subs: list[tuple[int, int]] = []
         cur = lo
         while True:
+            # anchor on <|tools_suffix|> to find the tool outputs delinieated by []
             ts = text.find(T_SUF, cur, hi)
             if ts < 0:
                 break
             after = ts + len(T_SUF)
             if after < hi and text[after] == "[":
-                cl = _bracket_close(text, after, hi)
-                mask_subs.append((after, cl + 1))
-                cur = cl + 1
+                cur = _bracket_close(text, after, hi) + 1
+                mask_subs.append((after, cur))
             else:
                 cur = after
 
         cursor = lo
         for mlo, mhi in mask_subs:
             if mlo > cursor:
+                # include non-tool-output lines only. 
                 spans.append((cursor, mlo))
             cursor = max(cursor, mhi)
         if cursor < hi:
@@ -118,10 +120,12 @@ def _spans_to_loss_mask(
         idx = bisect.bisect_right(starts, a) - 1
         if idx < 0:
             continue
+        # a fits somewhere among starts elements
         if b > a:
-            if ends[idx] >= b:
+            if b <= ends[idx]:
                 loss_mask[i] = 1
         else:
+            # in case the token is interpreted as having 0 length
             if a < ends[idx]:
                 loss_mask[i] = 1
     return loss_mask

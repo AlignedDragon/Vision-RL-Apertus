@@ -5,9 +5,9 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=460000
-#SBATCH --time=4:00:00
+#SBATCH --time=00:45:00
 #SBATCH --environment=verl_env
-#SBATCH --partition=normal
+#SBATCH --partition=debug
 #SBATCH --gpus-per-node=1
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
@@ -55,8 +55,8 @@ check_path "Apertus checkpoint" "$APERTUS_CHECKPOINT/config.json"
 check_path "Apertus tokenizer" "$APERTUS_CHECKPOINT/tokenizer_config.json"
 check_path "VQ model" "$VQ_MODEL_PATH/model.ckpt"
 check_path "Emu3.5 vision_tokenizer" "$EMU3_SRC/vision_tokenizer/__init__.py"
-check_path "raw.jsonl from download step" "$BASE/data_prep/cof_rl/raw.jsonl"
-check_path "images dir from download step" "$BASE/data_prep/cof_rl/images"
+check_path "raw.jsonl from download step" "$BASE/data_prep/cof_sft/raw.jsonl"
+check_path "images dir from download step" "$BASE/data_prep/cof_sft/images_original"
 
 python3 -c "import einops" 2>/dev/null && echo "  OK: einops installed" || { echo "  FAIL: einops not installed"; ((ERROR_COUNT++)); }
 

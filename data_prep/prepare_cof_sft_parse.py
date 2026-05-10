@@ -85,15 +85,6 @@ def parse_intermediate_assistant(text: str) -> tuple[str, str, dict]:
     return think_m.group(1).strip(), call_obj["name"], call_obj["arguments"]
 
 
-def _scale_bbox(bbox, src_size, dst_size):
-    """Scale [x1,y1,x2,y2] from src (w,h) to dst (w,h)."""
-    sw, sh = src_size
-    dw, dh = dst_size
-    sx, sy = dw / sw, dh / sh
-    x1, y1, x2, y2 = bbox
-    return [round(x1 * sx), round(y1 * sy), round(x2 * sx), round(y2 * sy)]
-
-
 def parse_final_assistant(text: str) -> tuple[str, dict]:
     """Extract <think> + <answer>; convert answer into a display_answers tool call."""
     think_m = THINK_RE.search(text)
@@ -104,11 +95,39 @@ def parse_final_assistant(text: str) -> tuple[str, dict]:
     return think_m.group(1).strip(), {"name": "display_answers", "arguments": args_str}
 
 
+def _scale_bbox(bbox, src_size, dst_size):
+    """Scale [x1,y1,x2,y2] from src (w,h) to dst (w,h)."""
+    sw, sh = src_size
+    dw, dh = dst_size
+    sx, sy = dw / sw, dh / sh
+    x1, y1, x2, y2 = bbox
+    return [round(x1 * sx), round(y1 * sy), round(x2 * sx), round(y2 * sy)]
+
+
+_BBOX_LITERAL_RE = re.compile(r"\[\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\]")
+
+
+def _rewrite_bboxes_in_text(text, src_size, dst_size):
+    """Rewrite [x1,y1,x2,y2] integer tuples in `text` from src to dst pixel space.
+
+    Skips tuples that don't fit src bounds so non-bbox 4-int tuples pass through.
+    """
+    sw, sh = src_size
+    def _sub(m):
+        x1, y1, x2, y2 = (int(g) for g in m.groups())
+        if not (x1 < x2 and y1 < y2 and x2 <= sw and y2 <= sh):
+            return m.group(0)
+        scaled = _scale_bbox([x1, y1, x2, y2], src_size, dst_size)
+        return f"[{scaled[0]}, {scaled[1]}, {scaled[2]}, {scaled[3]}]"
+    return _BBOX_LITERAL_RE.sub(_sub, text)
+
+
 def build_messages(
     src_msgs: list,
     image_token_strs: list[str],
-    orig_sizes: list[tuple[int, int]],
-    resized_sizes: list[tuple[int, int]],
+    main_orig_size: tuple[int, int],
+    main_resized_size: tuple[int, int],
+    intermediate_calls: list[tuple[str, str, dict]],
 ) -> list:
     """Render an Apertus conversation for an N-image trajectory (N >= 1).
 
@@ -117,9 +136,11 @@ def build_messages(
         (assistant=tool_call, user=tool_response) * (N-1),
         assistant=answer.
     `image_token_strs[k]` are the IBQ tokens for `image_paths[k]`.
-    `orig_sizes[k]` / `resized_sizes[k]` are (w, h) of image k before/after
-    smart_resize; used to rescale bbox_2d in tool calls (a bbox emitted at
-    step k was produced while looking at image 0).
+    `main_orig_size`/`main_resized_size` are (w, h) of image 0 before/after
+    smart_resize; used to rewrite bbox literals in `<think>` text.
+    `intermediate_calls[k-1]` is the (thoughts, tool_name, args) tuple for the
+    assistant turn that produced image k (k>=1); args["bbox_2d"] is already in
+    resized-main pixel coords.
     """
     n = len(image_token_strs)
     if n < 1:
@@ -127,6 +148,10 @@ def build_messages(
     if len(src_msgs) != 2 * n + 1:
         raise ValueError(
             f"expected {2 * n + 1} source messages for {n} images, got {len(src_msgs)}"
+        )
+    if len(intermediate_calls) != n - 1:
+        raise ValueError(
+            f"expected {n - 1} intermediate_calls for {n} images, got {len(intermediate_calls)}"
         )
 
     raw_user = src_msgs[1]["content"]
@@ -136,11 +161,8 @@ def build_messages(
     ]
 
     for k in range(1, n):
-        th, name, args = parse_intermediate_assistant(src_msgs[2 * k]["content"])
-        if "bbox_2d" in args:
-            args = {**args, "bbox_2d": _scale_bbox(
-                args["bbox_2d"], orig_sizes[0], resized_sizes[0]
-            )}
+        th, name, args = intermediate_calls[k - 1]
+        th = _rewrite_bboxes_in_text(th, main_orig_size, main_resized_size)
         args_str = json.dumps(args, ensure_ascii=False, separators=(", ", ": "))
         out.append({"role": "assistant", "content": {"blocks": [
             {"type": "thoughts", "text": th},
@@ -149,6 +171,7 @@ def build_messages(
         out.append({"role": "tool", "content": image_token_strs[k]})
 
     th_final, call_final = parse_final_assistant(src_msgs[2 * n]["content"])
+    th_final = _rewrite_bboxes_in_text(th_final, main_orig_size, main_resized_size)
     out.append({"role": "assistant", "content": {"blocks": [
         {"type": "thoughts", "text": th_final},
         {"type": "tool_calls", "calls": [call_final]},
@@ -226,31 +249,35 @@ def main():
                 continue
 
             try:
+                src_msgs = row["messages"]
                 img_tokens: list[str] = []
-                orig_sizes: list[tuple[int, int]] = []
-                resized_sizes: list[tuple[int, int]] = []
                 img_paths: list[Path] = []
+                intermediate_calls: list[tuple[str, str, dict]] = []
+                main_orig_size: tuple[int, int] | None = None
+                main_resized_size: tuple[int, int] | None = None
                 for k, (p_src, p_rel) in enumerate(zip(src_paths, paths)):
                     img = Image.open(p_src).convert("RGB")
-                    orig_sizes.append(img.size)
                     if k == 0:
+                        main_orig_size = img.size
                         resized = smart_resize(img)
+                        main_resized_size = resized.size
                     else:
-                        # Crops were cut from the original at original-coord
-                        # bboxes; rescale them by the same factor as the bbox
-                        # (resized_sizes[0] / orig_sizes[0]) so their pixel
-                        # dims stay consistent with the rescaled bbox coords.
-                        sx = resized_sizes[0][0] / orig_sizes[0][0]
-                        sy = resized_sizes[0][1] / orig_sizes[0][1]
-                        cw, ch = img.size
-                        new_w, new_h = round(cw * sx), round(ch * sy)
-                        if new_w < 16 or new_h < 16:
-                            raise ValueError(
-                                f"crop {k} too small after rescale: {new_w}x{new_h}"
-                            )
-                        scaled = img.resize((new_w, new_h), Image.BICUBIC)
+                        # Size the crop to its bbox region in resized-main pixel
+                        # space so the encoded token grid matches the bbox area.
+                        th, name, src_args = parse_intermediate_assistant(src_msgs[2 * k]["content"])
+                        if "bbox_2d" not in src_args:
+                            raise ValueError(f"assistant {k} has no bbox_2d")
+                        bbox_res = _scale_bbox(
+                            src_args["bbox_2d"], main_orig_size, main_resized_size
+                        )
+                        target_w = bbox_res[2] - bbox_res[0]
+                        target_h = bbox_res[3] - bbox_res[1]
+                        if target_w < 16 or target_h < 16:
+                            raise ValueError(f"target width or height less than 16: [{target_w}, {target_h}]")
+                        scaled_args = {**src_args, "bbox_2d": bbox_res}
+                        intermediate_calls.append((th, name, scaled_args))
+                        scaled = img.resize((target_w, target_h), Image.BICUBIC)
                         resized = smart_resize(scaled)
-                    resized_sizes.append(resized.size)
 
                     out_p = out_img_dir / p_rel
                     out_p.parent.mkdir(parents=True, exist_ok=True)
@@ -259,12 +286,14 @@ def main():
 
                     img_tokens.append(encode_image(resized, vq_model))
             except Exception as e:
-                print(f"  SKIP row {i}: IBQ encode failed: {e}")
+                print(f"  SKIP row {i}: image prep failed: {e}")
                 skipped += 1
                 continue
 
             try:
-                messages = build_messages(row["messages"], img_tokens, orig_sizes, resized_sizes)
+                messages = build_messages(
+                    row["messages"], img_tokens, main_orig_size, main_resized_size, intermediate_calls
+                )
             except Exception as e:
                 print(f"  SKIP row {i}: message build failed: {e}")
                 skipped += 1
@@ -277,6 +306,8 @@ def main():
                 add_generation_prompt=False,
                 tokenize=False,
             )
+            if not text.rstrip().endswith("<|assistant_end|>"):
+                text = text + "<|assistant_end|>"
 
             out_f.write(json.dumps({
                 "text": text,
