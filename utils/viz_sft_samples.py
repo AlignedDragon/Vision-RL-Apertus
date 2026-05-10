@@ -35,7 +35,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--parquet", default="data_prep/cof_sft/train.parquet")
     p.add_argument("--n", type=int, default=3)
-    p.add_argument("--seed", type=int, default=9)
+    p.add_argument("--seed", type=int, default=11)
     args = p.parse_args()
 
     random.seed(args.seed)
