@@ -274,6 +274,9 @@ def main():
                         target_h = bbox_res[3] - bbox_res[1]
                         if target_w < 16 or target_h < 16:
                             raise ValueError(f"target width or height less than 16: [{target_w}, {target_h}]")
+                        main_w, main_h = main_resized_size
+                        if target_w * target_h > 0.8 * main_w * main_h:
+                            raise ValueError(f"bbox covers >0.8 of image: {target_w}x{target_h} vs {main_w}x{main_h}")
                         scaled_args = {**src_args, "bbox_2d": bbox_res}
                         intermediate_calls.append((th, name, scaled_args))
                         scaled = img.resize((target_w, target_h), Image.BICUBIC)
