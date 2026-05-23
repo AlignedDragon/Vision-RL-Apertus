@@ -8,13 +8,14 @@ final assistant=answer turn.
 
 Per row, render an Apertus conversation:
   - system:    "You are a helpful assistant."
-  - developer: source tool (image_zoom_in_tool) + display_answers, rendered via tools=
+  - developer: tools loaded from configs/cof_rl_tool_config.yaml, rendered via tools=
   - user:      original question with first <image> replaced by IBQ tokens for image_paths[0],
                Qwen "Think in the mind first..." trailer stripped, Apertus instruction appended
   - for k in 1..N-1:
       - assistant: thoughts + tool_calls (from <think>...</think> + <tool_call>...</tool_call>)
       - tool:      IBQ tokens for image_paths[k] (no surrounding text)
   - assistant: thoughts + display_answers tool call (final <answer>...</answer> wrapped)
+  - tool:      "Bbox Drawn" to simulate display_answers backend output
 
 Trajectories with N > 3 are skipped to keep training sequences bounded.
 
@@ -50,9 +51,8 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from data_prep.prepare_cof_rl_parse import (
     APERTUS_SYSTEM,
     QWEN_TRAILER_SENTINEL,
-    DISPLAY_ANSWERS_TOOL,
-    extract_tool_def,
     load_config,
+    load_tool_schemas,
 )
 from inference.vision import smart_resize
 
@@ -176,6 +176,7 @@ def build_messages(
         {"type": "thoughts", "text": th_final},
         {"type": "tool_calls", "calls": [call_final]},
     ]}})
+    out.append({"role": "tool", "content": json.dumps("Bbox Drawn")})
     return out
 
 
@@ -184,6 +185,7 @@ def main():
     parser.add_argument("--input", default=None, help="Default: data_prep/cof_sft/raw.jsonl")
     parser.add_argument("--output", default=None, help="Default: data_prep/cof_sft/metadata.jsonl")
     parser.add_argument("--config", default="configs/apertus.yaml")
+    parser.add_argument("--tool-config", default="configs/cof_rl_tool_config.yaml")
     parser.add_argument("--limit", type=int, default=None, help="Process only first N rows (debug)")
     parser.add_argument("--val_ratio", type=float, default=0.05)
     parser.add_argument("--seed", type=int, default=42)
@@ -203,14 +205,9 @@ def main():
             rows = rows[: args.limit]
     print(f"Loaded {len(rows)} rows from {input_path}")
 
-    src_system = next(m["content"] for m in rows[0]["messages"] if m["role"] == "system")
-    tool_def = extract_tool_def(src_system)
-    print(f"Extracted tool: {tool_def['name']}")
-    for i in range(1, min(50, len(rows))):
-        other_system = next(m["content"] for m in rows[i]["messages"] if m["role"] == "system")
-        if extract_tool_def(other_system) != tool_def:
-            raise RuntimeError(f"Tool definition drift at row {i}")
-    print(f"Tool definition consistent across first {min(50, len(rows))} rows")
+    tool_schemas = load_tool_schemas(args.tool_config)
+    print(f"Loaded tool schemas from {args.tool_config}: "
+          f"{', '.join(schema['name'] for schema in tool_schemas)}")
 
     from PIL import Image
     from transformers import AutoTokenizer
@@ -304,7 +301,7 @@ def main():
 
             text = tokenizer.apply_chat_template(
                 messages,
-                tools=[tool_def, DISPLAY_ANSWERS_TOOL],
+                tools=tool_schemas,
                 enable_thinking=True,
                 add_generation_prompt=False,
                 tokenize=False,

@@ -10,14 +10,16 @@ data:
   train_files: /users/msayfiddinov/capscratch/verl-apertus/data_prep/cof_rl/train.parquet
   val_files: /users/msayfiddinov/capscratch/verl-apertus/data_prep/cof_rl/val.parquet
   prompt_key: prompt
-  max_prompt_length: 8192
+  # Apertus advertises an 8192-token context. Keep prompt + rollout response
+  # below that limit so SGLang never receives an exact/full-context request.
+  max_prompt_length: 6000
   max_response_length: 2048
   train_batch_size: 64
   return_raw_chat: true
   return_multi_modal_inputs: false
   apply_chat_template_kwargs:
     enable_thinking: true
-  filter_overlong_prompts: false
+  filter_overlong_prompts: true
   truncation: error
   custom_cls:
     path: /users/msayfiddinov/capscratch/verl-apertus/data_prep/apertus_rl_dataset.py
@@ -40,6 +42,7 @@ actor_rollout_ref:
     ppo_micro_batch_size_per_gpu: 1
   rollout:
     name: sglang
+    max_model_len: 8192
     gpu_memory_utilization: 0.5
     tensor_model_parallel_size: 2
     n: 8

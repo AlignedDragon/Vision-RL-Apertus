@@ -5,7 +5,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=460000
-#SBATCH --time=4:00:00
+#SBATCH --time=10:00:00
 #SBATCH --environment=verl_env
 #SBATCH --partition=normal
 #SBATCH --gpus-per-node=1

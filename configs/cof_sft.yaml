@@ -39,6 +39,10 @@ engine:
   strategy: fsdp2
   ulysses_sequence_parallel_size: 1
 
+checkpoint:
+  save_contents: ["model", "optimizer", "extra", "hf_model"]
+  load_contents: ["model", "optimizer", "extra"]
+
 trainer:
   total_epochs: 1
   project_name: apertus-cof-sft

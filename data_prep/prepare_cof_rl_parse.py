@@ -2,8 +2,7 @@
 
 Per row, render an Apertus 3-block prompt:
   - system:    "You are a helpful assistant."
-  - developer: tool capabilities (the source <tools> tool plus the
-               `display_answers` tool used to emit the final answer),
+  - developer: tool capabilities loaded from configs/cof_rl_tool_config.yaml,
                rendered as TypeScript types via the chat template's tools= parameter
   - user:      original question with <image> replaced by IBQ vision tokens,
                the Qwen "Think in the mind first..." trailer stripped, and an
@@ -38,7 +37,6 @@ from pathlib import Path
 import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
-import torch
 import yaml
 from PIL import Image
 
@@ -54,29 +52,40 @@ APERTUS_INSTRUCTION = (
 )
 APERTUS_SYSTEM = "You are a helpful assistant with access to tools."
 
-DISPLAY_ANSWERS_TOOL = {
-    "name": "display_answers",
-    "description": "Display the answers to the user.",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "answers": {
-                "type": "array",
-                "items": {"type":"string"},
-                "description": "The final answer.",
-            },
-        },
-        "required": ["answers"],
-    },
-}
-
-
 USER_BLOCK = re.compile(r"<\|user_start\|>(.*?)<\|user_end\|>", re.DOTALL)
 
 
 def load_config(path: str) -> dict:
     with open(path) as f:
         return yaml.safe_load(f)
+
+
+def _unwrap_openai_function_schema(schema: dict) -> dict:
+    """Return the inner function schema expected by the Apertus template."""
+    if isinstance(schema, dict) and schema.get("type") == "function" and "function" in schema:
+        return schema["function"]
+    return schema
+
+
+def load_tool_schemas(path: str) -> list[dict]:
+    """Load unwrapped tool schemas from a verl tool config YAML."""
+    config = load_config(path)
+    tools = config.get("tools") or []
+    schemas: list[dict] = []
+    for i, tool in enumerate(tools):
+        if "tool_schema" not in tool:
+            raise ValueError(f"Missing tool_schema for tool entry {i} in {path}")
+        schema = _unwrap_openai_function_schema(tool["tool_schema"])
+        if not isinstance(schema, dict) or not schema.get("name"):
+            raise ValueError(f"Invalid tool schema for tool entry {i} in {path}")
+        schemas.append(schema)
+
+    names = {schema["name"] for schema in schemas}
+    required = {"image_zoom_in_tool", "display_answers"}
+    missing = sorted(required - names)
+    if missing:
+        raise ValueError(f"Missing required tool schema(s) in {path}: {', '.join(missing)}")
+    return schemas
 
 
 def _extract_user_content(rendered_prompt: str) -> str:
@@ -155,29 +164,6 @@ def _split_and_write_parquet(
     pq.write_table(pa.Table.from_pylist(val_records), out_dir / "val.parquet")
     return len(train_records), len(val_records)
 
-
-def extract_tool_def(system_text: str) -> dict:
-    """Parse the <tools>{...}</tools> JSON in the source system prompt.
-
-    Source format (Qwen-style):
-        <tools>
-        {"type": "function", "function": {"name": ..., "description": ..., "parameters": {...}}}
-        </tools>
-
-    Apertus's chat_template.jinja accesses tool.name / tool.description / tool.parameters
-    directly, so we unwrap and return the inner `function` dict.
-    """
-    content = next(
-        (m.strip() for m in re.findall(r"<tools>(.*?)</tools>", system_text, re.DOTALL) if m.strip()),
-        None,
-    )
-    if content is None:
-        raise ValueError("No non-empty <tools>...</tools> block found in system content")
-    obj = json.loads(content)
-    if obj.get("type") != "function" or "function" not in obj:
-        raise ValueError(f"Unexpected tool envelope: {obj.keys()}")
-    return obj["function"]
-
 def build_system_message() -> dict:
     """Apertus system block: a single short instruction (constant)."""
     return {"role": "system", "content": APERTUS_SYSTEM}
@@ -190,11 +176,11 @@ def build_user_message(raw_user_text: str, image_token_str: str) -> dict:
     return {"role": "user", "content": f"{head}\n\n{APERTUS_INSTRUCTION}"}
 
 
-def render_apertus_prompt(tokenizer, system_msg: dict, user_msg: dict, tool_def: dict) -> str:
+def render_apertus_prompt(tokenizer, system_msg: dict, user_msg: dict, tool_schemas: list[dict]) -> str:
     """Render system + developer (tools) + user via the Apertus chat template."""
     return tokenizer.apply_chat_template(
         [system_msg, user_msg],
-        tools=[tool_def, DISPLAY_ANSWERS_TOOL],
+        tools=tool_schemas,
         enable_thinking=True,
         add_generation_prompt=True,
         tokenize=False,
@@ -221,6 +207,7 @@ def main():
     parser.add_argument("--input", default=None, help="Default: data_prep/cof_rl/raw.jsonl")
     parser.add_argument("--output", default=None, help="Default: data_prep/cof_rl/metadata.jsonl")
     parser.add_argument("--config", default="configs/apertus.yaml")
+    parser.add_argument("--tool_config", default="configs/cof_rl_tool_config.yaml")
     parser.add_argument("--limit", type=int, default=None, help="Process only first N rows (debug)")
     parser.add_argument("--val_ratio", type=float, default=0.05)
     parser.add_argument("--seed", type=int, default=42)
@@ -249,14 +236,9 @@ def main():
     print(f"Loaded {len(rows)} rows from {input_path}")
     print(f"Dropped {num_multi} questions for including multiple words")
 
-    # Extract and validate tool definition (identical across rows)
-    tool_def = extract_tool_def(get_system_text(rows[0]["prompt"]))
-    print(f"Extracted tool: {tool_def['name']}")
-    for i in range(1, min(50, len(rows))):
-        other = extract_tool_def(get_system_text(rows[i]["prompt"]))
-        if other != tool_def:
-            raise RuntimeError(f"Tool definition drift at row {i}")
-    print(f"Tool definition consistent across first {min(50, len(rows))} rows")
+    tool_schemas = load_tool_schemas(args.tool_config)
+    print(f"Loaded tool schemas from {args.tool_config}: "
+          f"{', '.join(schema['name'] for schema in tool_schemas)}")
 
     # Load tokenizer + IBQ vision model
     print(f"Loading Apertus tokenizer from {config['model']['checkpoint']} ...")
@@ -304,7 +286,7 @@ def main():
             user_text = get_user_text(row["prompt"])
             system_msg = build_system_message()
             user_msg = build_user_message(user_text, image_token_str)
-            prompt_str = render_apertus_prompt(tokenizer, system_msg, user_msg, tool_def)
+            prompt_str = render_apertus_prompt(tokenizer, system_msg, user_msg, tool_schemas)
 
             record = {
                 "question_id": qid,

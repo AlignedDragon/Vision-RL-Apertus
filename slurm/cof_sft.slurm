@@ -1,6 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=sft
 #SBATCH --account=infra01
+#SBATCH --reservation=SD-69241-apertus-1-5-0
 #SBATCH --nodes=2
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=64

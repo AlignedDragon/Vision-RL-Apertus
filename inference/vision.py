@@ -52,7 +52,7 @@ def load_vq_model(path: str, device: str = "cuda:0"):
 
 def smart_resize(
     image: Image.Image,
-    min_patches: int = 8,
+    min_patches: int = 16,
     max_patches: int = 2048,
     ds_factor: int = 16,
 ) -> Image.Image:
@@ -111,7 +111,7 @@ def format_image_tokens(token_grid: torch.Tensor) -> str:
 def encode_image(
     image: Image.Image,
     vq_model,
-    min_patches: int = 8,
+    min_patches: int = 16,
     max_patches: int = 2048,
 ) -> str:
     """Encode a PIL image to an Apertus image token string.
