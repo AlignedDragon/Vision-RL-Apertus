@@ -6,7 +6,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=460000
-#SBATCH --time=10:00:00
+#SBATCH --time=12:00:00
 #SBATCH --environment=verl_env
 #SBATCH --partition=normal
 #SBATCH --gpus-per-node=4
@@ -34,7 +34,9 @@ export HYDRA_FULL_ERROR=1 # for error tracking
 export WANDB_MODE=online
 
 BASE_MODEL_PATH="/capstor/store/cscs/swissai/infra01/MLLM/ablations/apertus-8b-img-SFT-32nodes-gbs512-mbs1-steps8030-img-text-seqlen8192-s2onlytxtloss/HF"
-SFT_CHECKPOINT_DIR="${SFT_CHECKPOINT_DIR:-${SCRATCH}/verl-apertus/checkpoints/apertus8b-cof-sft}"
+SFT_CHECKPOINT_DIR="${SFT_CHECKPOINT_DIR:-${PROJECT}/checkpoints/apertus8b-cof-sft}"
+RL_CHECKPOINT_DIR="${RL_CHECKPOINT_DIR:-${PROJECT}/checkpoints/cof_rl_apertus/apertus8b_grpo_cof_rl}"
+RL_RESUME_MODE="${RL_RESUME_MODE:-auto}"
 
 has_hf_weights() {
     local path="$1"
@@ -124,6 +126,13 @@ echo ""
 
 echo "== Job started at $(date)"
 echo "=== Starting GRPO training ==="
+echo "RL checkpoint dir: $RL_CHECKPOINT_DIR"
+echo "RL resume mode: $RL_RESUME_MODE"
+if [ -f "$RL_CHECKPOINT_DIR/latest_checkpointed_iteration.txt" ]; then
+    echo "Found RL checkpoint tracker: $(cat "$RL_CHECKPOINT_DIR/latest_checkpointed_iteration.txt")"
+else
+    echo "No RL checkpoint tracker found; verl will start from scratch if resume_mode=auto."
+fi
 # Run from PROJECT so `python -m` does not put /workspace/src/verl (the
 # container's bundled, outdated verl) on sys.path[0] and shadow the editable
 # install at /capstor/.../verl.
@@ -132,6 +141,8 @@ python3 -m verl.trainer.main_ppo \
     --config-path="$PROJECT/configs" \
     --config-name=cof_rl_grpo \
     actor_rollout_ref.model.path="$RL_MODEL_PATH" \
+    trainer.default_local_dir="$RL_CHECKPOINT_DIR" \
+    trainer.resume_mode="$RL_RESUME_MODE" \
     "$@"
 
 echo "=== Job ended at $(date) ==="

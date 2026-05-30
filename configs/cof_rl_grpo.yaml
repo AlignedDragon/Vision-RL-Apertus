@@ -43,15 +43,16 @@ actor_rollout_ref:
   rollout:
     name: sglang
     max_model_len: 8192
-    gpu_memory_utilization: 0.5
+    gpu_memory_utilization: 0.35
     tensor_model_parallel_size: 2
     n: 8
     log_prob_micro_batch_size_per_gpu: 4
     agent:
+      num_workers: 4
       agent_loop_config_path: /users/msayfiddinov/capscratch/verl-apertus/configs/apertus_agent_loop.yaml
     multi_turn:
       enable: true
-      format: hermes
+      format: apertus
       max_assistant_turns: 5
       max_parallel_calls: 1
       max_tool_response_length: 8192

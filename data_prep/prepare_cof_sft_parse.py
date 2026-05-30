@@ -176,7 +176,7 @@ def build_messages(
         {"type": "thoughts", "text": th_final},
         {"type": "tool_calls", "calls": [call_final]},
     ]}})
-    out.append({"role": "tool", "content": json.dumps("Bbox Drawn")})
+    out.append({"role": "tool", "content": json.dumps("Answer displayed")})
     return out
 
 

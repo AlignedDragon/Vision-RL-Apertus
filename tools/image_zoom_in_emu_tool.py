@@ -18,6 +18,7 @@ from math import ceil, floor
 from typing import Any, Optional
 from uuid import uuid4
 
+import torch
 from PIL import Image
 
 from verl.tools.base_tool import BaseTool
@@ -32,6 +33,9 @@ from inference.vision import encode_image, load_vq_model
 logger = logging.getLogger(__name__)
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
 
+_VQ_MODELS: dict[tuple[str, str], Any] = {}
+_VQ_MODELS_LOCK = threading.Lock()
+
 
 class ImageZoomInEmuTool(BaseTool):
     """Crop a bbox from a source image and return its IBQ token string."""
@@ -43,15 +47,41 @@ class ImageZoomInEmuTool(BaseTool):
         self.min_dimension: int = int(config.get("min_dimension", 16))
 
         self._instance_dict: dict[str, dict[str, Any]] = {}
-        self._vq_model = None
-        self._vq_lock = threading.Lock()
 
     def _ensure_vq_model(self):
-        if self._vq_model is None:
-            with self._vq_lock:
-                if self._vq_model is None:
-                    logger.info(f"Loading IBQ vision tokenizer from {self.vq_model_path}")
-                    self._vq_model = load_vq_model(self.vq_model_path, device=self.vq_device)
+        device = self._resolve_vq_device()
+        key = (self.vq_model_path, device)
+        vq_model = _VQ_MODELS.get(key)
+        if vq_model is None:
+            with _VQ_MODELS_LOCK:
+                vq_model = _VQ_MODELS.get(key)
+                if vq_model is None:
+                    msg = (
+                        f"image_zoom_in_tool loading IBQ vision tokenizer on {device}; "
+                        f"CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES', '<unset>')}"
+                    )
+                    print(msg, flush=True)
+                    logger.warning(msg)
+                    vq_model = load_vq_model(self.vq_model_path, device=device)
+                    _VQ_MODELS[key] = vq_model
+        return vq_model
+
+    def _resolve_vq_device(self) -> str:
+        if self.vq_device == "auto":
+            if torch.cuda.is_available():
+                return "cuda:0"
+            raise RuntimeError(
+                "image_zoom_in_tool requires a GPU, but CUDA is not visible in this Ray worker. "
+                f"CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES', '<unset>')}"
+            )
+        if self.vq_device.startswith("cuda") and not torch.cuda.is_available():
+            raise RuntimeError(
+                f"Configured vq_device={self.vq_device}, but CUDA is not visible in this Ray worker. "
+                f"CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES', '<unset>')}"
+            )
+        if self.vq_device == "cpu":
+            raise RuntimeError("image_zoom_in_tool is configured for CPU, but this run requires GPU.")
+        return self.vq_device
 
     def _validate_bbox(self, left: float, top: float, right: float, bottom: float) -> bool:
         if not (left < right and top < bottom):
@@ -153,9 +183,9 @@ class ImageZoomInEmuTool(BaseTool):
             )
 
         try:
-            self._ensure_vq_model()
+            vq_model = self._ensure_vq_model()
             cropped = image.crop(tuple(sanitized))
-            token_str = encode_image(cropped, self._vq_model)
+            token_str = encode_image(cropped, vq_model)
         except Exception as e:
             logger.warning(f"image_zoom_in_tool encoding failed: {e}")
             return (

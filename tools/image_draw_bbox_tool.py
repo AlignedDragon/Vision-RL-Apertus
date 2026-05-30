@@ -41,7 +41,7 @@ class DrawBboxTool(BaseTool):
 
         draw_bbox_backend()
         return (
-            ToolResponse(text="Answer Displayed"),
+            ToolResponse(text="Bounding box drawn"),
             0.0,
             {"success": True},
         )

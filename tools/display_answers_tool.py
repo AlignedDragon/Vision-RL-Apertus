@@ -7,9 +7,9 @@ from verl.tools.base_tool import BaseTool
 from verl.tools.schemas import OpenAIFunctionToolSchema, ToolResponse
 
 
-def draw_bbox_backend(*args: Any, **kwargs: Any) -> None:
+def display_answer_backend(*args: Any, **kwargs: Any) -> None:
     # Left empty for future user UI forward compatibility
-    print("Successfully drawn")
+    print("Answer displayed")
 
 
 class DisplayAnswersTool(BaseTool):
@@ -39,9 +39,9 @@ class DisplayAnswersTool(BaseTool):
                 {"success": False},
             )
 
-        draw_bbox_backend()
+        display_answer_backend()
         return (
-            ToolResponse(text="Bbox Drawn"),
+            ToolResponse(text="Answer displayed"),
             0.0,
             {"success": True},
         )

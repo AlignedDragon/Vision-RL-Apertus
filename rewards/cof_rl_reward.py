@@ -25,19 +25,27 @@ def _extract_display_answers(solution_str: str) -> list[str] | None:
     blocks = TOOLS_BLOCK.findall(solution_str)
     if not blocks:
         return None
-    try:
-        calls = json.loads(blocks[-1])
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(calls, list) or not calls:
-        return None
-    call = calls[-1]
-    if not isinstance(call, dict):
-        return None
-    args = call.get("display_answers")
-    if not isinstance(args, dict) or not isinstance(args.get("answers"), list):
-        return None
-    return [str(a) for a in args["answers"]]
+    for block in reversed(blocks):
+        try:
+            calls = json.loads(block)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(calls, list):
+            calls = [calls]
+        for call in reversed(calls):
+            if not isinstance(call, dict):
+                continue
+            args = call.get("display_answers")
+            if args is None and call.get("name") == "display_answers":
+                args = call.get("arguments")
+                if isinstance(args, str):
+                    try:
+                        args = json.loads(args)
+                    except json.JSONDecodeError:
+                        continue
+            if isinstance(args, dict) and isinstance(args.get("answers"), list):
+                return [str(a) for a in args["answers"]]
+    return None
 
 
 def _normalize(s: str) -> str:
@@ -99,6 +107,12 @@ def _run_self_tests():
             1.0,
         ),
         (
+            "openai-shaped native tool call",
+            '<|tools_prefix|>[{"name": "display_answers", "arguments": {"answers": ["D"]}}]<|tools_suffix|>',
+            "D",
+            1.0,
+        ),
+        (
             "no display_answers at all -> 0.0",
             '<|tools_prefix|>[{"image_zoom_in_tool": {"bbox_2d": [0,0,10,10]}}]<|tools_suffix|>',
             "anything",
@@ -144,6 +158,12 @@ def _run_self_tests():
             "empty answers list -> 0.0",
             '<|tools_prefix|>[{"display_answers": {"answers": []}}]<|tools_suffix|>',
             "X",
+            0.0,
+        ),
+        (
+            "plain decoded answer without display_answers -> 0.0",
+            "Yes",
+            "yes",
             0.0,
         ),
     ]
