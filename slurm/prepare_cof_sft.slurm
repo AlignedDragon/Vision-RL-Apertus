@@ -1,13 +1,14 @@
 #!/bin/bash
 #SBATCH --job-name=prepare_cof_sft
 #SBATCH --account=infra01
+#SBATCH --reservation=SD-69241-apertus-1-5-0
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=460000
-#SBATCH --time=00:45:00
+#SBATCH --time=02:00:00
 #SBATCH --environment=verl_env
-#SBATCH --partition=debug
+#SBATCH --partition=normal
 #SBATCH --gpus-per-node=1
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
@@ -63,7 +64,7 @@ python3 -c "import einops" 2>/dev/null && echo "  OK: einops installed" || { ech
 if [ $ERROR_COUNT -gt 0 ]; then
     echo ""
     echo "ERROR: $ERROR_COUNT pre-flight checks failed."
-    echo "Hint: run data_prep/prepare_cof_rl_download.py on the login node first."
+    echo "Hint: run data_prep/cof_rl_download.py on the login node first."
     exit 1
 fi
 
@@ -74,7 +75,7 @@ echo ""
 
 # --- Run parse ---
 echo "=== Starting Parse ==="
-python3 data_prep/prepare_cof_sft_parse.py --config configs/apertus.yaml
+python3 data_prep/cof_sft_parse.py --config configs/apertus.yaml
 echo ""
 
 echo "=== Job ended at $(date '+%Y-%m-%d %H:%M:%S') ==="

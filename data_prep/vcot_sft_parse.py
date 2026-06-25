@@ -16,7 +16,7 @@ Output records:
     }
 
 Usage (interactive on a GPU node):
-    python data_prep/prepare_vcot_sft_parse.py --limit 5
+    python data_prep/vcot_sft_parse.py --limit 5
 """
 
 import argparse
@@ -86,17 +86,31 @@ def build_messages(row: dict, image_token_str: str) -> list[dict]:
     bbox = row["bboxs"][0]
     display_args = json.dumps({"answers": [row["answer"]]}, ensure_ascii=False)
     bbox_args = json.dumps({"bbox_2d": bbox}, ensure_ascii=False)
+
+    # Only GQA (cot_with_detailed_reasoning_steps) ships a `thought` reasoning
+    # chain and a sentence-form `full_answer`; the other 11 subsets carry only
+    # question/answer/bbox. Emit the thoughts block only when reasoning exists,
+    # and fall back to the short `answer` for the response text when there is no
+    # `full_answer`.
+    blocks: list[dict] = []
+    thought = row.get("thought")
+    if isinstance(thought, str) and thought.strip():
+        blocks.append({"type": "thoughts", "text": strip_thought_enumeration(thought)})
+    full_answer = row.get("full_answer")
+    response_text = (
+        full_answer.strip()
+        if isinstance(full_answer, str) and full_answer.strip()
+        else row["answer"].strip()
+    )
+    blocks.append({"type": "response", "text": response_text})
+    blocks.append({"type": "tool_calls", "calls": [
+        {"name": "draw_bbox_tool", "arguments": bbox_args},
+        {"name": "display_answers", "arguments": display_args},
+    ]})
     return [
         {"role": "system", "content": APERTUS_SYSTEM},
         {"role": "user", "content": build_user_text(row["question"], image_token_str)},
-        {"role": "assistant", "content": {"blocks": [
-            {"type": "thoughts", "text": strip_thought_enumeration(row["thought"])},
-            {"type": "response", "text": row["full_answer"].strip()},
-            {"type": "tool_calls", "calls": [
-                {"name": "draw_bbox_tool", "arguments": bbox_args},
-                {"name": "display_answers", "arguments": display_args},
-            ]},
-        ]}},
+        {"role": "assistant", "content": {"blocks": blocks}},
         {"role": "tool", "content": json.dumps("Bounding box drawn")},
         {"role": "tool", "content": json.dumps("Answer displayed")},
     ]
@@ -147,28 +161,25 @@ def get_or_create_split_indices(
     return split
 
 
-def build_image_index(images_root: Path) -> dict[str, Path]:
-    index: dict[str, Path] = {}
-    if not images_root.exists():
-        return index
-    for path in images_root.rglob("*"):
-        if path.is_file():
-            index.setdefault(path.name, path)
-    return index
+def resolve_image_path(row: dict, images_root: Path) -> Path:
+    """Resolve a row to images_root/<dataset>/<basename>.
 
-
-def resolve_image_path(image_name: str, images_root: Path, image_index: dict[str, Path]) -> Path:
-    candidates = [
-        images_root / image_name,
-        images_root / "images" / image_name,
-        images_root / "cot_images" / image_name,
-    ]
-    for path in candidates:
-        if path.exists():
-            return path
-    if image_name in image_index:
-        return image_index[image_name]
-    raise FileNotFoundError(f"Could not find image {image_name!r} under {images_root}")
+    Images were extracted into per-dataset folders, so resolution must key on
+    (dataset, basename): bare basenames collide across subsets (COCO/OpenImages
+    ids recur) and several subsets reuse the same physical image pool. The
+    output folder name matches the row's `dataset` field (e.g. visual7w rows are
+    labelled `v7w`).
+    """
+    dataset = row.get("dataset")
+    if not dataset:
+        raise KeyError(f"row missing 'dataset' field: keys={sorted(row)}")
+    base = Path(row["image"]).name
+    path = images_root / dataset / base
+    if path.exists():
+        return path
+    raise FileNotFoundError(
+        f"Could not find image dataset={dataset!r} base={base!r} under {images_root}"
+    )
 
 
 def main():
@@ -218,7 +229,6 @@ def main():
     vq_model = load_vq_model(config["model"]["vq_model"], device="cuda:0")
     print("Models loaded")
 
-    image_index = build_image_index(images_root)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     skipped = 0
     text_lens: list[int] = []
@@ -227,7 +237,7 @@ def main():
     with open(output_path, "w", encoding="utf-8") as out_f:
         for i, row in enumerate(rows):
             try:
-                src_path = resolve_image_path(row["image"], images_root, image_index)
+                src_path = resolve_image_path(row, images_root)
                 img = Image.open(src_path).convert("RGB")
                 image_token_str = encode_image(img, vq_model)
                 messages = build_messages(row, image_token_str)

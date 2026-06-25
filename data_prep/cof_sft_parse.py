@@ -26,7 +26,7 @@ Output records:
     }
 
 Usage (interactive on a GPU node):
-    python data_prep/prepare_cof_sft_parse.py --limit 5
+    python data_prep/cof_sft_parse.py --limit 5
 
 Usage (SLURM): clone slurm/prepare_cof_rl.slurm and swap the script + dataset dir.
 """
@@ -48,7 +48,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 # Re-export the constants/helpers we share with the RL parse. Heavy deps
 # (torch, PIL, transformers, vision_tokenizer) are imported inside main()
 # so the pure-python helpers below can be unit-tested without them.
-from data_prep.prepare_cof_rl_parse import (
+from data_prep.cof_rl_parse import (
     APERTUS_SYSTEM,
     QWEN_TRAILER_SENTINEL,
     load_config,
@@ -228,7 +228,6 @@ def main():
     start = time.time()
 
     src_dir = dataset_dir / "images_original"
-    out_img_dir = dataset_dir / "images"
 
     with open(output_path, "w", encoding="utf-8") as out_f:
         for i, row in enumerate(rows):
@@ -259,8 +258,10 @@ def main():
                         resized = smart_resize(img)
                         main_resized_size = resized.size
                     else:
-                        # Size the crop to its bbox region in resized-main pixel
-                        # space so the encoded token grid matches the bbox area.
+                        # The assistant emits bbox_2d in resized-main space, so the
+                        # model learns to point in the space it perceives; the fixed
+                        # tool rescales that to the original at rollout. Keep bbox_res
+                        # for the tool-call coords and the validity gates below.
                         th, name, src_args = parse_intermediate_assistant(src_msgs[2 * k]["content"])
                         if "bbox_2d" not in src_args:
                             raise ValueError(f"assistant {k} has no bbox_2d")
@@ -272,18 +273,21 @@ def main():
                         if target_w < 16 or target_h < 16:
                             raise ValueError(f"target width or height less than 16: [{target_w}, {target_h}]")
                         main_w, main_h = main_resized_size
-                        if target_w * target_h > 0.8 * main_w * main_h:
+                        if target_w * target_h > 0.5 * main_w * main_h:
                             raise ValueError(f"bbox covers >0.8 of image: {target_w}x{target_h} vs {main_w}x{main_h}")
                         scaled_args = {**src_args, "bbox_2d": bbox_res}
                         intermediate_calls.append((th, name, scaled_args))
-                        scaled = img.resize((target_w, target_h), Image.BICUBIC)
-                        resized = smart_resize(scaled)
+                        # Encode the gold crop at full smart_resize budget, exactly
+                        # like the fixed zoom tool (encode_image -> smart_resize), so
+                        # SFT zoom tokens match what the tool returns at rollout
+                        # instead of a tiny bbox-area grid.
+                        resized = smart_resize(img)
 
-                    out_p = out_img_dir / p_rel
-                    out_p.parent.mkdir(parents=True, exist_ok=True)
-                    resized.save(out_p)
-                    img_paths.append(out_p)
-
+                    # image_paths point at the pristine source (images_original).
+                    # Training reads only `text` (IBQ tokens are already inlined) and
+                    # viz_sft_samples loads these for inspection — so there is no need
+                    # to write a redundant smart_resize'd copy under images/.
+                    img_paths.append(p_src)
                     img_tokens.append(encode_image(resized, vq_model))
             except Exception as e:
                 print(f"  SKIP row {i}: image prep failed: {e}")
@@ -356,8 +360,8 @@ def main():
         pq.write_table(pa.Table.from_pylist(val_recs), val_out)
         print(f"\nWrote {len(train_recs)} rows to {train_out}")
         print(f"Wrote {len(val_recs)} rows to {val_out}")
-        print(f"\nReady. Originals are preserved under {src_dir}; processed "
-              f"artifacts written to {out_img_dir}.")
+        print(f"\nReady. Images live under {src_dir}; IBQ tokens are inlined in "
+              f"the `text` field (training reads only that).")
 
 
 if __name__ == "__main__":

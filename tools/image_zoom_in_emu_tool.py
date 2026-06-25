@@ -5,8 +5,12 @@ Differs from verl/tools/image_zoom_in_tool.py:
   Apertus consumes images via inline IBQ token strings, so the tool message
   body is a string starting with <|img_start|> and ending with <|img_end|>.
 - Source image is loaded from `image_path` provided by the dataset row via
-  tools_kwargs.image_zoom_in_tool.create_kwargs.image_path. The model passes
-  only `bbox_2d` in the tool call.
+  tools_kwargs.image_zoom_in_tool.create_kwargs.image_path. This is the
+  ORIGINAL full-resolution image (data prep no longer overwrites it with the
+  downscaled copy), so the crop carries genuine new detail.
+- The model sees the image after smart_resize, so its `bbox_2d` is in that
+  displayed space. We rescale the bbox to original pixels before cropping,
+  then re-encode the crop (smart_resize caps it at 2048 IBQ tokens).
 - Schema exposes only `bbox_2d` (no label, no ratio).
 """
 
@@ -28,7 +32,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from inference.vision import encode_image, load_vq_model
+from inference.vision import encode_image, load_vq_model, smart_resize
 
 logger = logging.getLogger(__name__)
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
@@ -44,7 +48,6 @@ class ImageZoomInEmuTool(BaseTool):
         super().__init__(config, tool_schema)
         self.vq_model_path: str = config["vq_model_path"]
         self.vq_device: str = config.get("vq_device", "cuda:0")
-        self.min_dimension: int = int(config.get("min_dimension", 16))
 
         self._instance_dict: dict[str, dict[str, Any]] = {}
 
@@ -84,28 +87,29 @@ class ImageZoomInEmuTool(BaseTool):
         return self.vq_device
 
     def _validate_bbox(self, left: float, top: float, right: float, bottom: float) -> bool:
-        if not (left < right and top < bottom):
-            return False
-        h = bottom - top
-        w = right - left
-        if h < self.min_dimension or w < self.min_dimension:
-            return False
-        if max(h, w) / min(h, w) > 100:
-            return False
-        return True
+        return left < right and top < bottom
 
     def _sanitize_bbox(
-        self, bbox_2d: list[float], image_width: int, image_height: int
+        self,
+        bbox_2d: list[float],
+        orig_width: int,
+        orig_height: int,
+        disp_width: int,
+        disp_height: int,
     ) -> Optional[list[int]]:
-        """Clamp the bbox to image bounds, validate, and snap to int coords.
+        """Map a bbox from displayed (IBQ-resized) space to original pixels.
 
-        Returns int [x1, y1, x2, y2] inside the image, with both sides
-        >= self.min_dimension, or None if the bbox is invalid.
+        The model only ever sees the image after smart_resize, so the bbox it
+        emits is in that displayed coordinate space. Rescale it to the original
+        full-resolution image, clamp to bounds, validate, and snap to int
+        coords. Returns int [x1, y1, x2, y2] in original pixels, or None.
         """
-        left = max(0.0, float(bbox_2d[0]))
-        top = max(0.0, float(bbox_2d[1]))
-        right = min(float(image_width), float(bbox_2d[2]))
-        bottom = min(float(image_height), float(bbox_2d[3]))
+        sx = orig_width / disp_width
+        sy = orig_height / disp_height
+        left = max(0.0, float(bbox_2d[0]) * sx)
+        top = max(0.0, float(bbox_2d[1]) * sy)
+        right = min(float(orig_width), float(bbox_2d[2]) * sx)
+        bottom = min(float(orig_height), float(bbox_2d[3]) * sy)
 
         if not self._validate_bbox(left, top, right, bottom):
             return None
@@ -169,14 +173,16 @@ class ImageZoomInEmuTool(BaseTool):
             )
 
         image: Image.Image = entry["image"]
-        sanitized = self._sanitize_bbox(bbox_floats, image.width, image.height)
+        # Reproduce the displayed (IBQ-resized) image the model saw, so we can
+        # map its bbox back onto the original full-res image and crop from there.
+        displayed = smart_resize(image)
+        sanitized = self._sanitize_bbox(
+            bbox_floats, image.width, image.height, displayed.width, displayed.height
+        )
         if sanitized is None:
             return (
                 ToolResponse(
-                    text=(
-                        f"Error: bbox {bbox_2d} is invalid or has a side smaller "
-                        f"than {self.min_dimension}px after clamping to the image."
-                    )
+                    text=f"Error: bbox {bbox_2d} is invalid (requires x1 < x2 and y1 < y2)."
                 ),
                 0.0,
                 {"success": False},

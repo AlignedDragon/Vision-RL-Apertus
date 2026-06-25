@@ -4,12 +4,11 @@ tools:
       type: native
       vq_model_path: /capstor/store/cscs/swissai/infra01/MLLM/tokenizer/Emu3.5-VisionTokenizer
       vq_device: cuda:0
-      min_dimension: 16
     tool_schema:
       type: function
       function:
         name: image_zoom_in_tool
-        description: "Crops a region from the original input image and returns it as a new image for closer inspection. Use to examine small or distant details."
+        description: "Zoom in on a region of the image by cropping it to a bounding box, for a closer look at small details at available resolution."
         parameters:
           type: object
           properties:
@@ -19,7 +18,7 @@ tools:
                 type: number
               minItems: 4
               maxItems: 4
-              description: "Crop region in absolute pixels of the original image as [x1, y1, x2, y2]: top-left and bottom-right corners. Origin (0,0) is top-left; x grows right, y grows down. Crops under ~4096 px in area are upscaled to that minimum."
+              description: "The region to zoom in, as [x1, y1, x2, y2]: the top-left and bottom-right corners of the bounding box."
           required:
             - bbox_2d
   - class_name: "tools.display_answers_tool.DisplayAnswersTool"

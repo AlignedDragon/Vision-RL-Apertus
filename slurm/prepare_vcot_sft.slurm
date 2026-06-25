@@ -60,7 +60,7 @@ python3 -c "import einops" 2>/dev/null && echo "  OK: einops installed" || { ech
 if [ $ERROR_COUNT -gt 0 ]; then
     echo ""
     echo "ERROR: $ERROR_COUNT pre-flight checks failed."
-    echo "Hint: run data_prep/prepare_vcot_download.py on the login node first."
+    echo "Hint: run data_prep/vcot_download.py on the login node first."
     exit 1
 fi
 
@@ -70,7 +70,7 @@ nvidia-smi --list-gpus
 echo ""
 
 echo "=== Starting Parse ==="
-python3 data_prep/prepare_vcot_sft_parse.py --config configs/apertus.yaml
+python3 data_prep/vcot_sft_parse.py --config configs/apertus.yaml
 echo ""
 
 echo "=== Job ended at $(date '+%Y-%m-%d %H:%M:%S') ==="

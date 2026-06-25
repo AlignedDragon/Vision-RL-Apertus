@@ -4,8 +4,8 @@ No GPU needed — runs on the login node. Downloads the train split, fetches
 images.zip, extracts it, and writes a raw.jsonl that the parse step consumes.
 
 Usage:
-    python data_prep/prepare_cof_rl_download.py
-    python data_prep/prepare_cof_rl_download.py --output-dir /tmp/cof_rl
+    python data_prep/cof_rl_download.py
+    python data_prep/cof_rl_download.py --output-dir /tmp/cof_rl
 """
 
 import argparse

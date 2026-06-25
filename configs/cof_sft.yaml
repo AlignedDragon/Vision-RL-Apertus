@@ -45,10 +45,11 @@ checkpoint:
 
 trainer:
   total_epochs: 1
+  resume_mode: disable  # train fresh on the fixed full-budget-crop data (don't resume old-data ckpt)
   project_name: apertus-cof-sft
   experiment_name: apertus8b-cof-sft-bs32-lr1e-5
   default_local_dir: /capstor/scratch/cscs/${oc.env:USER}/verl-apertus/checkpoints/apertus8b-cof-sft
   logger: [console, wandb]
-  save_freq: 200
-  test_freq: 50
+  save_freq: 40
+  test_freq: 40
   rollout_data_dir: /users/msayfiddinov/capscratch/verl-apertus/slurm/rollout_logs

@@ -1,6 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=prepare_cof_rl
 #SBATCH --account=infra01
+#SBATCH --reservation=SD-69241-apertus-1-5-0
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=16
@@ -57,13 +58,19 @@ check_path "VQ model" "$VQ_MODEL_PATH/model.ckpt"
 check_path "Emu3.5 vision_tokenizer" "$EMU3_SRC/vision_tokenizer/__init__.py"
 check_path "raw.jsonl from download step" "$BASE/data_prep/cof_rl/raw.jsonl"
 check_path "images dir from download step" "$BASE/data_prep/cof_rl/images"
+# DeepEyes rows are optional (merged if present)
+if [ -f "$BASE/data_prep/cof_rl/raw_deepeyes.jsonl" ]; then
+    echo "  OK: raw_deepeyes.jsonl present (merged only if INCLUDE_DEEPEYES=true)"
+else
+    echo "  NOTE: raw_deepeyes.jsonl absent (run data_prep/deepeyes_rl_download.py + set INCLUDE_DEEPEYES=true to merge)"
+fi
 
 python3 -c "import einops" 2>/dev/null && echo "  OK: einops installed" || { echo "  FAIL: einops not installed"; ((ERROR_COUNT++)); }
 
 if [ $ERROR_COUNT -gt 0 ]; then
     echo ""
     echo "ERROR: $ERROR_COUNT pre-flight checks failed."
-    echo "Hint: run data_prep/prepare_cof_rl_download.py on the login node first."
+    echo "Hint: run data_prep/cof_rl_download.py on the login node first."
     exit 1
 fi
 
@@ -72,9 +79,27 @@ echo "=== GPU Info ==="
 nvidia-smi --list-gpus
 echo ""
 
-# --- Run parse ---
+# --- Build RL training set: CoF-RL only by default. ---
+# Set INCLUDE_DEEPEYES=true to also merge data_prep/cof_rl/raw_deepeyes.jsonl.
+# (DeepEyes zoom data is V* sentence answers + chart MCQ letters; the single-token
+# filter drops all V*, leaving chart-MCQ that doesn't require zooming, which trains
+# the model to stop using the tool. Opted out for now.)
+echo "=== Building RL training set ==="
+INCLUDE_DEEPEYES="${INCLUDE_DEEPEYES:-false}"
+MERGED="$BASE/data_prep/cof_rl/raw_merged.jsonl"
+cat "$BASE/data_prep/cof_rl/raw.jsonl" > "$MERGED"
+if [ "$INCLUDE_DEEPEYES" = "true" ] && [ -f "$BASE/data_prep/cof_rl/raw_deepeyes.jsonl" ]; then
+    cat "$BASE/data_prep/cof_rl/raw_deepeyes.jsonl" >> "$MERGED"
+    echo "  INCLUDE_DEEPEYES=true -> merged DeepEyes rows"
+else
+    echo "  CoF-RL only (INCLUDE_DEEPEYES=$INCLUDE_DEEPEYES)"
+fi
+echo "  total rows: $(wc -l < "$MERGED")"
+echo ""
+
+# --- Run parse (single-token answer filter applied here) ---
 echo "=== Starting Parse ==="
-python3 data_prep/prepare_cof_rl_parse.py --config configs/apertus.yaml
+python3 data_prep/cof_rl_parse.py --config configs/apertus.yaml --input "$MERGED"
 echo ""
 
 echo "=== Job ended at $(date '+%Y-%m-%d %H:%M:%S') ==="

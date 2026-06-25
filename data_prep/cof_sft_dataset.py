@@ -1,6 +1,6 @@
 """SFT dataset for Apertus rendered conversations with intra-turn tool-output masking.
 
-Reads the JSONL produced by `prepare_cof_sft_parse.py` (rows of
+Reads the JSONL produced by `cof_sft_parse.py` (rows of
 `{"text": <rendered Apertus chat>, "image_paths": [...]}`) and emits per-example
 `{input_ids, attention_mask, position_ids, loss_mask}` tensors for verl's SFT
 trainer (custom_cls hook in verl/trainer/sft_trainer.py:create_sft_dataset).

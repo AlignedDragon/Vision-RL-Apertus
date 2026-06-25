@@ -21,7 +21,7 @@ Output records:
     }
 
 Usage (interactive on a GPU node):
-    python data_prep/prepare_cof_rl_parse.py --limit 5
+    python data_prep/cof_rl_parse.py --limit 5
 
 Usage (SLURM):
     sbatch slurm/prepare_cof_rl.slurm
@@ -118,7 +118,9 @@ def _build_parquet_record(meta: dict, split: str) -> dict:
         "ability": meta.get("ability", ""),
         "reward_model": {"style": "rule", "ground_truth": answer},
         "extra_info": {
-            "index": qid,
+            # str for a uniform parquet column: CoF indices are ints, DeepEyes
+            # indices are strings (e.g. "deepeyes-vtb2-physics-8049").
+            "index": str(qid),
             "split": split,
             "answer": answer,
             "need_tools_kwargs": True,
@@ -276,7 +278,9 @@ def main():
             try:
                 image = Image.open(image_path).convert("RGB")
                 resized = smart_resize(image)
-                resized.save(image_path)
+                # Keep the ORIGINAL full-res image on disk: the zoom tool opens
+                # this path at rollout and crops from it for genuine detail. The
+                # resized copy is only used in-memory to build the prompt tokens.
                 image_token_str = encode_image(resized, vq_model)
             except Exception as e:
                 print(f"  SKIP row {i} (qid={qid}): IBQ encode failed: {e}")

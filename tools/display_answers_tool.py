@@ -9,7 +9,7 @@ from verl.tools.schemas import OpenAIFunctionToolSchema, ToolResponse
 
 def display_answer_backend(*args: Any, **kwargs: Any) -> None:
     # Left empty for future user UI forward compatibility
-    print("Answer displayed")
+    print("Answers displayed")
 
 
 class DisplayAnswersTool(BaseTool):
@@ -41,7 +41,7 @@ class DisplayAnswersTool(BaseTool):
 
         display_answer_backend()
         return (
-            ToolResponse(text="Answer displayed"),
+            ToolResponse(text="Answers displayed"),
             0.0,
             {"success": True},
         )

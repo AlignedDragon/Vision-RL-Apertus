@@ -5,8 +5,8 @@ filter rows whose answer is a single word and that have a single bbox, and
 write a compact raw.jsonl for the later parse/SFT/RL steps.
 
 Usage:
-    python data_prep/prepare_vcot_download.py
-    python data_prep/prepare_vcot_download.py --output-dir /tmp/vcot
+    python data_prep/vcot_download.py
+    python data_prep/vcot_download.py --output-dir /tmp/vcot
 """
 
 import argparse

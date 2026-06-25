@@ -28,6 +28,21 @@ EMU3_SRC="/users/$USER/capscratch/Emu3.5/src"
 
 export PYTHONPATH="${PROJECT}:${VERL}:${EMU3_SRC}:${PYTHONPATH:-}"
 export PYTHONUNBUFFERED=1
+
+# Disable OpenTelemetry/gRPC metrics export: its periodic exporter thread
+# segfaults in getenv() (thread-unsafe getenv vs setenv from model loading),
+# which kills the Ray AgentLoopWorker mid-rollout. We don't use OTel here.
+export OTEL_SDK_DISABLED=true
+export OTEL_TRACES_EXPORTER=none
+export OTEL_METRICS_EXPORTER=none
+export OTEL_LOGS_EXPORTER=none
+export GRPC_ENABLE_FORK_SUPPORT=0
+# Ray's own C++ OpenTelemetry metrics (may ignore the OTEL_* vars above)
+export RAY_experimental_enable_open_telemetry=0
+export RAY_enable_open_telemetry=0
+# NOTE: expandable_segments:True triggers NCCL ncclInvalidUsage during FSDP init
+# on this torch/NCCL build, so we rely on CPU offload (below) for the OOM fix.
+export NCCL_DEBUG=WARN
 export HF_HOME="${SCRATCH}/hf_home"
 export TRANSFORMERS_CACHE="${HF_HOME}"
 export HYDRA_FULL_ERROR=1 # for error tracking
