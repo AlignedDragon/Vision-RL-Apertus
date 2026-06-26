@@ -1,12 +1,21 @@
-"""Half answer / half bbox reward for Visual-CoT RL trajectories.
+"""Format-shaped answer/bbox reward for Visual-CoT RL trajectories.
 
 The model emits tool calls in Apertus's native format, e.g.
     <|tools_prefix|>[{"draw_bbox_tool": {"bbox_2d": [x1, y1, x2, y2]}}]<|tools_suffix|>
     ...
     <|tools_prefix|>[{"display_answers": {"answers": ["<X>"]}}]<|tools_suffix|>
 
-Score = ANSWER_WEIGHT * answer_match + BBOX_WEIGHT * IoU(pred_bbox, gold_bbox),
-with ANSWER_WEIGHT = BBOX_WEIGHT = 0.5, so a perfect answer + perfect box -> 1.0.
+Score (max 1.0) is the sum of four parts:
+    + 0.1  FORMAT: the rollout makes >=1 correctly-formatted display_answers call
+    + 0.1  FORMAT: the rollout makes >=1 correctly-formatted draw_bbox_tool call
+    + 0.4  ANSWER: the last display_answers call string-matches the ground truth
+    + 0.4  BBOX:   IoU(last draw_bbox_tool bbox_2d, gold bbox)
+
+The two 0.1 format bonuses are one-time: a single correct call earns them and
+calling a tool repeatedly does not stack (only the first instance counts). They
+are awarded even when the answer is wrong / the box misses, to credit the model
+for learning the tool-call protocol. The remaining 0.8 ("matching ground truth")
+keeps the original 50/50 answer-vs-IoU balance, scaled to 0.4 + 0.4.
 
   - answer_match: 1.0 if the last display_answers call string-matches the ground
     truth (case/trailing-punct normalized), else 0.0.
@@ -27,8 +36,12 @@ import re
 
 TOOLS_BLOCK = re.compile(r"<\|tools_prefix\|>(\[.*?\])<\|tools_suffix\|>", re.DOTALL)
 
-ANSWER_WEIGHT = 0.5
-BBOX_WEIGHT = 0.5
+BBOX_TOOL_NAME = "draw_bbox_tool"
+
+DISPLAY_FORMAT_WEIGHT = 0.1
+BBOX_FORMAT_WEIGHT = 0.1
+ANSWER_WEIGHT = 0.4
+IOU_WEIGHT = 0.4
 
 
 # --------------------------------------------------------------------------- #
@@ -84,7 +97,7 @@ def _extract_pred_bbox(solution_str: str) -> list[float] | None:
     """Return the bbox_2d of the LAST draw_bbox_tool call, or None."""
     found = None
     for name, args in _iter_calls(solution_str):
-        if name == "draw_bbox_tool":
+        if name == BBOX_TOOL_NAME:
             box = args.get("bbox_2d")
             if isinstance(box, (list, tuple)) and len(box) == 4:
                 try:
@@ -92,6 +105,35 @@ def _extract_pred_bbox(solution_str: str) -> list[float] | None:
                 except (TypeError, ValueError):
                     continue
     return found
+
+
+def _is_valid_bbox(box) -> bool:
+    """True iff `box` is 4 numeric values forming a canonical, non-degenerate box."""
+    if not isinstance(box, (list, tuple)) or len(box) != 4:
+        return False
+    try:
+        x1, y1, x2, y2 = (float(v) for v in box)
+    except (TypeError, ValueError):
+        return False
+    return x1 < x2 and y1 < y2
+
+
+def _has_display_call(solution_str: str) -> bool:
+    """True iff >=1 display_answers call carries a non-empty list of answers."""
+    for name, args in _iter_calls(solution_str):
+        if name == "display_answers":
+            answers = args.get("answers")
+            if isinstance(answers, list) and len(answers) > 0:
+                return True
+    return False
+
+
+def _has_bbox_call(solution_str: str) -> bool:
+    """True iff >=1 draw_bbox_tool call carries a valid bbox_2d."""
+    for name, args in _iter_calls(solution_str):
+        if name == BBOX_TOOL_NAME and _is_valid_bbox(args.get("bbox_2d")):
+            return True
+    return False
 
 
 # --------------------------------------------------------------------------- #
@@ -158,16 +200,23 @@ def compute_score(
     extra_info=None,
     **kwargs,
 ) -> float:
-    """0.5 * answer_match + 0.5 * IoU(pred_bbox, gold_bbox)."""
+    """0.1 display-format + 0.1 bbox-format + 0.4 answer-match + 0.4 IoU (max 1.0)."""
     # ground_truth may arrive as the raw answer string, or as a dict bundling
     # {"answer":..., "bbox":...}; support both.
     answer_gt = ground_truth
     if isinstance(ground_truth, dict) and "answer" in ground_truth:
         answer_gt = ground_truth["answer"]
 
+    score = 0.0
+    if _has_display_call(solution_str):
+        score += DISPLAY_FORMAT_WEIGHT
+    if _has_bbox_call(solution_str):
+        score += BBOX_FORMAT_WEIGHT
+
     ans = _answer_match(_extract_display_answers(solution_str), answer_gt)
     iou = _iou(_extract_pred_bbox(solution_str), _gold_bbox(ground_truth, extra_info))
-    return ANSWER_WEIGHT * ans + BBOX_WEIGHT * iou
+    score += ANSWER_WEIGHT * ans + IOU_WEIGHT * iou
+    return score
 
 
 # --------------------------------------------------------------------------- #
@@ -188,26 +237,39 @@ def _run_self_tests():
 
     ei = {"bbox": GOLD}
     cases = [
+        # 0.1 display-fmt + 0.1 bbox-fmt + 0.4 answer + 0.4 IoU
         ("perfect answer + perfect box -> 1.0", sol(GOLD, "cat"), "cat", ei, 1.0),
-        ("perfect answer, no box -> 0.5", sol(None, "cat"), "cat", ei, 0.5),
-        ("wrong answer, perfect box -> 0.5", sol(GOLD, "dog"), "cat", ei, 0.5),
-        ("perfect answer, half-overlap box -> 0.5 + 0.5*IoU",
-         sol([10, 10, 110, 210], "cat"), "cat", ei, 0.5 + 0.5 * (10000 / 20000)),
+        ("perfect answer, no box -> 0.1 fmt + 0.4 ans = 0.5",
+         sol(None, "cat"), "cat", ei, 0.5),
+        ("wrong answer, perfect box -> 0.1+0.1 fmt + 0.4 IoU = 0.6",
+         sol(GOLD, "dog"), "cat", ei, 0.6),
+        ("perfect answer, half-overlap box -> 0.2 fmt + 0.4 ans + 0.4*0.5 IoU = 0.8",
+         sol([10, 10, 110, 210], "cat"), "cat", ei, 0.8),
         ("no box, no answer -> 0.0", "", "cat", ei, 0.0),
-        ("missing gold bbox -> answer only",
-         sol(GOLD, "cat"), "cat", {}, 0.5),
-        ("openai-shaped calls",
+        ("missing gold bbox -> 0.2 fmt + 0.4 ans = 0.6",
+         sol(GOLD, "cat"), "cat", {}, 0.6),
+        ("openai-shaped calls -> 1.0",
          '<|tools_prefix|>[{"name":"draw_bbox_tool","arguments":{"bbox_2d":[10,10,110,110]}}]<|tools_suffix|>'
          '<|tools_prefix|>[{"name":"display_answers","arguments":{"answers":["cat"]}}]<|tools_suffix|>',
          "cat", ei, 1.0),
-        ("swapped corners still score IoU",
-         sol([110, 110, 10, 10], "cat"), "cat", ei, 1.0),
-        ("ground_truth dict bundling answer+bbox",
+        ("swapped corners: IoU still scores but no bbox-format bonus -> 0.9",
+         sol([110, 110, 10, 10], "cat"), "cat", ei, 0.9),
+        ("ground_truth dict bundling answer+bbox -> 1.0",
          sol(GOLD, "cat"), {"answer": "cat", "bbox": GOLD}, None, 1.0),
-        ("case/punct normalized answer",
+        ("case/punct normalized answer -> 1.0",
          sol(GOLD, "Cat."), "cat", ei, 1.0),
-        ("disjoint box -> answer only",
-         sol([500, 500, 600, 600], "cat"), "cat", ei, 0.5),
+        ("disjoint box -> 0.2 fmt + 0.4 ans = 0.6",
+         sol([500, 500, 600, 600], "cat"), "cat", ei, 0.6),
+        ("box only, no answer, perfect box -> 0.1 fmt + 0.4 IoU = 0.5",
+         sol(GOLD, None), "cat", ei, 0.5),
+        ("bbox not length-4 -> no bbox-format, IoU 0 -> 0.1 fmt + 0.4 ans = 0.5",
+         '<|tools_prefix|>[{"draw_bbox_tool": {"bbox_2d": [10,10,110]}}]<|tools_suffix|>'
+         '<|tools_prefix|>[{"display_answers": {"answers": ["cat"]}}]<|tools_suffix|>',
+         "cat", ei, 0.5),
+        ("degenerate box (zero area) -> no bbox-format, IoU 0 -> 0.5",
+         sol([10, 10, 10, 110], "cat"), "cat", ei, 0.5),
+        ("wrong answer + disjoint box -> both format bonuses only -> 0.2",
+         sol([500, 500, 600, 600], "dog"), "cat", ei, 0.2),
     ]
     failures = 0
     for label, s, gt, extra, expected in cases:
