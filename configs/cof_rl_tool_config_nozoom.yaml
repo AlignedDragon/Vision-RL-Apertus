@@ -1,0 +1,21 @@
+# Ablation tool config: display_answers ONLY (zoom tool removed) to measure
+# whether the image_zoom_in_tool actually contributes to V*Bench accuracy.
+tools:
+  - class_name: "tools.display_answers_tool.DisplayAnswersTool"
+    config:
+      type: native
+    tool_schema:
+      type: function
+      function:
+        name: display_answers
+        description: "Display the answers to the user."
+        parameters:
+          type: object
+          properties:
+            answers:
+              type: array
+              items:
+                type: string
+              description: "The final answers."
+          required:
+            - answers

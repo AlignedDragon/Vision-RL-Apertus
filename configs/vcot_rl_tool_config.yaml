@@ -16,7 +16,7 @@ tools:
                 type: number
               minItems: 4
               maxItems: 4
-              description: "Box coordinates in absolute pixels of the original image as [x1, y1, x2, y2]: top-left and bottom-right corners. Origin (0,0) is top-left; x grows right, y grows down. Requires x1 < x2 and y1 < y2."
+              description: "Box coordinates in pixels of the image as shown to you, as [x1, y1, x2, y2]: top-left and bottom-right corners. Origin (0,0) is top-left; x grows right, y grows down. Requires x1 < x2 and y1 < y2."
           required:
             - bbox_2d
   - class_name: "tools.display_answers_tool.DisplayAnswersTool"

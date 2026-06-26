@@ -82,8 +82,21 @@ def build_user_text(question: str, image_token_str: str) -> str:
     return f"{image_token_str} Question: {question.strip()}\n\n{APERTUS_INSTRUCTION}"
 
 
-def build_messages(row: dict, image_token_str: str) -> list[dict]:
-    bbox = row["bboxs"][0]
+def scale_bbox(bbox, src_wh, dst_wh) -> list[int]:
+    """Scale an [x1, y1, x2, y2] box from src (w, h) pixels to dst (w, h) pixels.
+
+    The model perceives the smart_resize'd image (its IBQ token grid encodes the
+    resized pixels), so the gold bbox must be expressed in that same resized
+    space for both SFT targets and the RL reward to point where the model sees.
+    """
+    sw, sh = src_wh
+    dw, dh = dst_wh
+    sx, sy = dw / sw, dh / sh
+    x1, y1, x2, y2 = bbox
+    return [round(x1 * sx), round(y1 * sy), round(x2 * sx), round(y2 * sy)]
+
+
+def build_messages(row: dict, image_token_str: str, bbox) -> list[dict]:
     display_args = json.dumps({"answers": [row["answer"]]}, ensure_ascii=False)
     bbox_args = json.dumps({"bbox_2d": bbox}, ensure_ascii=False)
 
@@ -218,7 +231,7 @@ def main():
     config = load_config(args.config)
     from PIL import Image
     from transformers import AutoTokenizer
-    from inference.vision import encode_image, load_vq_model
+    from inference.vision import encode_image, load_vq_model, smart_resize
 
     print(f"Loading Apertus tokenizer from {config['model']['checkpoint']} ...")
     tokenizer = AutoTokenizer.from_pretrained(
@@ -239,8 +252,11 @@ def main():
             try:
                 src_path = resolve_image_path(row, images_root)
                 img = Image.open(src_path).convert("RGB")
-                image_token_str = encode_image(img, vq_model)
-                messages = build_messages(row, image_token_str)
+                # Express the gold bbox in the resized (perceived) image space.
+                resized = smart_resize(img)
+                bbox = scale_bbox(row["bboxs"][0], img.size, resized.size)
+                image_token_str = encode_image(resized, vq_model)
+                messages = build_messages(row, image_token_str, bbox)
                 text = tokenizer.apply_chat_template(
                     messages,
                     tools=tool_schemas,
@@ -256,7 +272,7 @@ def main():
                     "image_paths": [str(src_path)],
                     "raw_index": row["_raw_index"],
                     "answer": row["answer"],
-                    "bbox": row["bboxs"][0],
+                    "bbox": bbox,
                 }, ensure_ascii=False) + "\n")
                 text_lens.append(len(text))
             except Exception as e:

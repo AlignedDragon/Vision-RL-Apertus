@@ -1,2 +1,4 @@
 - name: cof_tool_agent
   _target_: data_prep.apertus_rl_dataset.ApertusToolAgentLoop
+- name: vcot_tool_agent
+  _target_: data_prep.apertus_rl_dataset.ApertusToolAgentLoop

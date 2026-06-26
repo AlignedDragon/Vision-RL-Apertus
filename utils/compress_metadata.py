@@ -28,8 +28,9 @@ n = 0
 with open(SRC) as f, open(DST, "w") as o:
     for line in f:
         r = json.loads(line)
-        if isinstance(r.get("prompt"), str):
-            r["prompt"] = strip_images(r["prompt"])
+        for key in ("prompt", "text"):
+            if isinstance(r.get(key), str):
+                r[key] = strip_images(r[key])
         o.write(json.dumps(r, ensure_ascii=False) + "\n")
         n += 1
 print(f"wrote {n} rows -> {DST}")

@@ -1,12 +1,12 @@
 #!/bin/bash
-#SBATCH --job-name=prepare_vcot_sft
+#SBATCH --job-name=prepare_vcot_rl
 #SBATCH --account=infra01
 #SBATCH --reservation=SD-69241-apertus-1-5-0
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=460000
-#SBATCH --time=04:00:00
+#SBATCH --time=06:00:00
 #SBATCH --environment=verl_env
 #SBATCH --partition=normal
 #SBATCH --gpus-per-node=1
@@ -17,9 +17,11 @@ set -euo pipefail
 
 echo "=== Job started at $(date '+%Y-%m-%d %H:%M:%S') ==="
 
+# --- Conda ---
 source /users/msayfiddinov/capscratch/miniconda/etc/profile.d/conda.sh
 conda activate verl
 
+# --- Paths ---
 BASE="/users/$USER/capscratch/verl-apertus"
 cd "$BASE"
 
@@ -35,6 +37,7 @@ export PYTHONUNBUFFERED=1
 
 rm -rf ~/.cache/torch_extensions/ 2>/dev/null || true
 
+# --- Pre-flight checks ---
 echo "=== Pre-flight Checks ==="
 ERROR_COUNT=0
 
@@ -70,8 +73,18 @@ echo "=== GPU Info ==="
 nvidia-smi --list-gpus
 echo ""
 
-echo "=== Starting Parse ==="
-python3 data_prep/vcot_sft_parse.py --config configs/apertus.yaml
+# --- Run parse ---
+# VQ-encode runs ~3.9 img/s on 1 GH200. The RL split is ~186k rows (~13h, beyond
+# the 12h partition cap). An 8h GRPO run (bs=64) consumes well under 20k prompts,
+# so we cap the parse at VCOT_RL_LIMIT (default 40000) for ample margin and a
+# ~3h prep. Override with VCOT_RL_LIMIT=0 (or unset) to parse the full split.
+VCOT_RL_LIMIT="${VCOT_RL_LIMIT:-40000}"
+LIMIT_ARG=""
+if [ "$VCOT_RL_LIMIT" != "0" ]; then
+    LIMIT_ARG="--limit $VCOT_RL_LIMIT"
+fi
+echo "=== Starting Parse (limit='${VCOT_RL_LIMIT}') ==="
+python3 data_prep/vcot_rl_parse.py --config configs/apertus.yaml $LIMIT_ARG
 echo ""
 
 echo "=== Job ended at $(date '+%Y-%m-%d %H:%M:%S') ==="
