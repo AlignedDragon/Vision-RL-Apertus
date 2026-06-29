@@ -10,7 +10,7 @@ Differs from verl/tools/image_zoom_in_tool.py:
   downscaled copy), so the crop carries genuine new detail.
 - The model sees the image after smart_resize, so its `bbox_2d` is in that
   displayed space. We rescale the bbox to original pixels before cropping,
-  then re-encode the crop (smart_resize caps it at 2048 IBQ tokens).
+  then re-encode the crop (smart_resize caps it at 256 IBQ tokens — CoF budget).
 - Schema exposes only `bbox_2d` (no label, no ratio).
 """
 
@@ -175,7 +175,7 @@ class ImageZoomInEmuTool(BaseTool):
         image: Image.Image = entry["image"]
         # Reproduce the displayed (IBQ-resized) image the model saw, so we can
         # map its bbox back onto the original full-res image and crop from there.
-        displayed = smart_resize(image)
+        displayed = smart_resize(image, max_patches=256)  # CoF image-encoding budget: 256 IBQ tokens
         sanitized = self._sanitize_bbox(
             bbox_floats, image.width, image.height, displayed.width, displayed.height
         )
@@ -191,7 +191,7 @@ class ImageZoomInEmuTool(BaseTool):
         try:
             vq_model = self._ensure_vq_model()
             cropped = image.crop(tuple(sanitized))
-            token_str = encode_image(cropped, vq_model)
+            token_str = encode_image(cropped, vq_model, max_patches=256)  # CoF image-encoding budget: 256 IBQ tokens
         except Exception as e:
             logger.warning(f"image_zoom_in_tool encoding failed: {e}")
             return (

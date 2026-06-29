@@ -48,7 +48,7 @@ from inference.vision import encode_image, load_vq_model, smart_resize
 QWEN_TRAILER_SENTINEL = "Think in the mind first"
 APERTUS_INSTRUCTION = (
     "Call the display_answers tool exactly once at the end of your response, "
-    "passing your final answer as a single word in the `answers` argument."
+    "passing your final answer as a single phrase, word, or letter in the `answers` argument."
 )
 APERTUS_SYSTEM = "You are a helpful assistant with access to tools."
 
@@ -277,11 +277,12 @@ def main():
 
             try:
                 image = Image.open(image_path).convert("RGB")
-                resized = smart_resize(image)
+                # CoF image-encoding budget: 256 IBQ tokens (max).
+                resized = smart_resize(image, max_patches=256)
                 # Keep the ORIGINAL full-res image on disk: the zoom tool opens
                 # this path at rollout and crops from it for genuine detail. The
                 # resized copy is only used in-memory to build the prompt tokens.
-                image_token_str = encode_image(resized, vq_model)
+                image_token_str = encode_image(resized, vq_model, max_patches=256)
             except Exception as e:
                 print(f"  SKIP row {i} (qid={qid}): IBQ encode failed: {e}")
                 skipped += 1

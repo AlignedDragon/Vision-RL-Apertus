@@ -84,7 +84,8 @@ def main():
                 continue
             try:
                 image = Image.open(img_path).convert("RGB")
-                token_str = encode_image(smart_resize(image), vq)
+                # CoF image-encoding budget: 256 IBQ tokens (match CoF training).
+                token_str = encode_image(smart_resize(image, max_patches=256), vq, max_patches=256)
             except Exception as e:
                 print(f"  SKIP {i}: IBQ encode failed: {e}", flush=True)
                 skipped += 1

@@ -1,5 +1,9 @@
 """Download ChenShawn/DeepEyes-Datasets-47k and emit CoF-RL raw rows.
 
+NOTE: DeepEyes is NOT part of training by default. It is opt-in only: running
+this script merely produces raw_deepeyes.jsonl; training includes it solely when
+prepare_cof_rl.slurm is run with INCLUDE_DEEPEYES=true.
+
 DeepEyes ships verl-format parquet with images embedded as bytes. We extract
 the ORIGINAL-resolution images to disk and map each row to the same raw schema
 that ``cof_rl_parse.py`` consumes, so the existing parse/encode/filter pipeline

@@ -85,6 +85,11 @@ echo ""
 # filter drops all V*, leaving chart-MCQ that doesn't require zooming, which trains
 # the model to stop using the tool. Opted out for now.)
 echo "=== Building RL training set ==="
+# ============================================================================
+# >>> DEFAULT: DeepEyes is EXCLUDED from training. <<<
+# DeepEyes is NEVER part of training unless explicitly opted in with
+# INCLUDE_DEEPEYES=true (and raw_deepeyes.jsonl present). Leave it unset/false.
+# ============================================================================
 INCLUDE_DEEPEYES="${INCLUDE_DEEPEYES:-false}"
 MERGED="$BASE/data_prep/cof_rl/raw_merged.jsonl"
 cat "$BASE/data_prep/cof_rl/raw.jsonl" > "$MERGED"

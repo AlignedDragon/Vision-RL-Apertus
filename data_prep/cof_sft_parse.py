@@ -56,12 +56,12 @@ from data_prep.cof_rl_parse import (
 )
 from inference.vision import smart_resize
 
-# SFT keeps multi-word ground-truths, so the instruction must accept any answer
-# string (RL drops multi-word answers and instructs "single word"). The single
-# element of the `answers` array carries the original answer verbatim.
+# CoF SFT and RL share ONE instruction wording for consistency. CoF answers can be
+# a multi-word phrase (SFT keeps these), a single word, or a single letter (MCQ),
+# so the wording covers all three; the answer is the single element of `answers`.
 APERTUS_INSTRUCTION = (
     "Call the display_answers tool exactly once at the end of your response, "
-    "passing your final answer as the single element of the `answers` argument."
+    "passing your final answer as a single phrase, word, or letter in the `answers` argument."
 )
 
 THINK_RE = re.compile(r"<think>\s*(.*?)\s*</think>", re.DOTALL)
@@ -255,7 +255,7 @@ def main():
                     img = Image.open(p_src).convert("RGB")
                     if k == 0:
                         main_orig_size = img.size
-                        resized = smart_resize(img)
+                        resized = smart_resize(img, max_patches=256)  # CoF image-encoding budget: 256 IBQ tokens
                         main_resized_size = resized.size
                     else:
                         # The assistant emits bbox_2d in resized-main space, so the
@@ -277,18 +277,18 @@ def main():
                             raise ValueError(f"bbox covers >0.8 of image: {target_w}x{target_h} vs {main_w}x{main_h}")
                         scaled_args = {**src_args, "bbox_2d": bbox_res}
                         intermediate_calls.append((th, name, scaled_args))
-                        # Encode the gold crop at full smart_resize budget, exactly
-                        # like the fixed zoom tool (encode_image -> smart_resize), so
-                        # SFT zoom tokens match what the tool returns at rollout
+                        # Encode the gold crop at the CoF smart_resize budget (256),
+                        # exactly like the fixed zoom tool (encode_image -> smart_resize),
+                        # so SFT zoom tokens match what the tool returns at rollout
                         # instead of a tiny bbox-area grid.
-                        resized = smart_resize(img)
+                        resized = smart_resize(img, max_patches=256)  # CoF image-encoding budget: 256 IBQ tokens
 
                     # image_paths point at the pristine source (images_original).
                     # Training reads only `text` (IBQ tokens are already inlined) and
                     # viz_sft_samples loads these for inspection — so there is no need
                     # to write a redundant smart_resize'd copy under images/.
                     img_paths.append(p_src)
-                    img_tokens.append(encode_image(resized, vq_model))
+                    img_tokens.append(encode_image(resized, vq_model, max_patches=256))
             except Exception as e:
                 print(f"  SKIP row {i}: image prep failed: {e}")
                 skipped += 1

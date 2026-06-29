@@ -106,7 +106,7 @@ def encode_all_images(
     for i, record in enumerate(metadata):
         image_path = dataset_dir / record["image_file"]
         image = Image.open(image_path)
-        token_str = encode_image(image, vq_model)
+        token_str = encode_image(image, vq_model, max_patches=256)  # CoF image-encoding budget: 256 IBQ tokens
         image_tokens[record["question_id"]] = token_str
 
         if (i + 1) % 50 == 0 or i == len(metadata) - 1:
