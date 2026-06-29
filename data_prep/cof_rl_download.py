@@ -20,9 +20,15 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 def download_dataset(output_dir: Path, split: str = "train") -> int:
     """Download the HF dataset split and write raw.jsonl. Returns row count."""
     from datasets import load_dataset
+    from huggingface_hub import hf_hub_download
 
-    print(f"Loading {REPO_ID} split={split} ...")
-    ds = load_dataset(REPO_ID, split=split)
+    # Load from the cached train.parquet directly via the local "parquet" builder.
+    # (load_dataset(REPO_ID) resolves a builder from the Hub and fails under
+    # HF_HUB_OFFLINE even when the files are cached; hf_hub_download is offline-safe.)
+    print(f"Resolving {REPO_ID} train.parquet ...")
+    pq_path = hf_hub_download(repo_id=REPO_ID, filename="train.parquet", repo_type="dataset")
+    print(f"Loading {pq_path} ...")
+    ds = load_dataset("parquet", data_files=pq_path, split="train")
     print(f"Loaded {len(ds)} rows")
 
     raw_path = output_dir / "raw.jsonl"

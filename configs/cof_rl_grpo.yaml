@@ -10,10 +10,13 @@ data:
   train_files: /users/msayfiddinov/capscratch/verl-apertus/data_prep/cof_rl/train.parquet
   val_files: /users/msayfiddinov/capscratch/verl-apertus/data_prep/cof_rl/val.parquet
   prompt_key: prompt
-  # Apertus advertises an 8192-token context. Keep prompt + rollout response
-  # below that limit so SGLang never receives an exact/full-context request.
-  max_prompt_length: 6000
-  max_response_length: 2048
+  # Apertus advertises an 8192-token context. With CoF images at 256 IBQ tokens the input
+  # prompt is short (~400-550 tok), so shift the budget to the rollout RESPONSE: this lets
+  # multi-turn zoom (each crop ~256 tok) use the full context instead of being truncated --
+  # truncation at the old 2048-token budget was what drove RL to abandon the zoom tool.
+  # Sum (2048+6000=8048) < 8192 so SGLang never gets a full/exact-context request.
+  max_prompt_length: 2048
+  max_response_length: 6000
   train_batch_size: 64
   return_raw_chat: true
   return_multi_modal_inputs: false
@@ -89,10 +92,11 @@ trainer:
   project_name: cof_rl_apertus
   experiment_name: apertus8b_grpo_cof_rl
   total_epochs: 5
+  total_training_steps: 50   # the cof256 run's RL target (per request); raise/remove for longer RL
   n_gpus_per_node: 4
   nnodes: 1
-  save_freq: 100
-  test_freq: 50
+  save_freq: 25
+  test_freq: 25
   critic_warmup: 0
   logger: ["console", "wandb"]
   rollout_data_dir: /users/msayfiddinov/capscratch/verl-apertus/slurm/rollout_logs

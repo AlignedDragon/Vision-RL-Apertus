@@ -44,12 +44,13 @@ checkpoint:
   load_contents: ["model", "optimizer", "extra"]
 
 trainer:
-  total_epochs: 1
-  resume_mode: disable  # train fresh on the fixed full-budget-crop data (don't resume old-data ckpt)
+  total_epochs: 3   # 256-tok images are OOD vs the base img-SFT; 1 epoch under-adapts and the
+                    # model degenerates the tool-call JSON format. >=2-3 epochs stabilize it.
+  resume_mode: disable  # train fresh (don't resume old-data ckpt)
   project_name: apertus-cof-sft
   experiment_name: apertus8b-cof-sft-bs32-lr1e-5
   default_local_dir: /capstor/scratch/cscs/${oc.env:USER}/verl-apertus/checkpoints/apertus8b-cof-sft
   logger: [console, wandb]
-  save_freq: 40
-  test_freq: 40
+  save_freq: 25
+  test_freq: 25
   rollout_data_dir: /users/msayfiddinov/capscratch/verl-apertus/slurm/rollout_logs

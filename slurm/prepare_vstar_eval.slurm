@@ -32,6 +32,11 @@ echo "=== GPU Info ===" && nvidia-smi --list-gpus && echo ""
 
 echo "=== Building V*Bench eval parquet ==="
 VSTAR_SNAP="/capstor/scratch/cscs/msayfiddinov/hf_home/hub/datasets--craigwu--vstar_bench/snapshots/d9ae62c903da0c98336e85c5ee89cd863b04b4da"
-python3 data_prep/vstar_parse.py --snapshot "$VSTAR_SNAP"
+# MAX_PATCHES=256 (CoF budget, default) or 2048 (high-res baseline). Separate OUT_DIR per
+# cap since input-image tokens are baked at parse time.
+MAX_PATCHES="${MAX_PATCHES:-256}"
+OUT_DIR="${OUT_DIR:-$BASE/data_prep/vstar_bench}"
+echo "MAX_PATCHES=$MAX_PATCHES  OUT_DIR=$OUT_DIR"
+python3 data_prep/vstar_parse.py --snapshot "$VSTAR_SNAP" --max-patches "$MAX_PATCHES" --out-dir "$OUT_DIR"
 
 echo "=== Job ended at $(date '+%Y-%m-%d %H:%M:%S') ==="

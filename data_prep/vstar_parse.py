@@ -49,6 +49,8 @@ def main():
     ap.add_argument("--config", default=str(PROJECT_ROOT / "configs/apertus.yaml"))
     ap.add_argument("--tool_config", default=str(PROJECT_ROOT / "configs/cof_rl_tool_config.yaml"))
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--max-patches", dest="max_patches", type=int, default=256,
+                    help="input-image token cap (256 = CoF budget, default; 2048 = high-res baseline eval set)")
     args = ap.parse_args()
 
     snap = Path(args.snapshot or resolve_snapshot())
@@ -84,8 +86,9 @@ def main():
                 continue
             try:
                 image = Image.open(img_path).convert("RGB")
-                # CoF image-encoding budget: 256 IBQ tokens (match CoF training).
-                token_str = encode_image(smart_resize(image, max_patches=256), vq, max_patches=256)
+                # CoF image-encoding budget: 256 IBQ tokens (match CoF training); --max-patches
+                # 2048 builds the high-res baseline eval set.
+                token_str = encode_image(smart_resize(image, max_patches=args.max_patches), vq, max_patches=args.max_patches)
             except Exception as e:
                 print(f"  SKIP {i}: IBQ encode failed: {e}", flush=True)
                 skipped += 1
