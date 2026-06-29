@@ -51,8 +51,11 @@ from data_prep.vcot_sft_parse import scale_bbox
 
 DEFAULT_COCO_IMAGES = "/capstor/store/cscs/swissai/infra01/datasets/coco/train2014"
 
-# Frame the referring expression as an explicit grounding instruction, then reuse a
-# VCoT-style draw-bbox instruction tail so the prompt stays in-distribution.
+# RefCOCO+ REC: the ANSWER is the bounding box, so the reward scores ONLY the bbox
+# (Acc@0.5). But keep the full draw_bbox + display_answers instruction the models were
+# SFT/RL-trained on: dropping the display_answers tail makes the prompt
+# out-of-distribution and SFT format-collapses (stops emitting the box). The
+# display_answers output is simply ignored by the bbox-only reward.
 INSTRUCTION = (
     "Draw a bounding box around the region described by calling the draw_bbox_tool, "
     "then call the display_answers tool exactly once with a single word naming it."
