@@ -30,6 +30,20 @@ All evals **sglang only** (greedy). Base scored from free-text response (no disp
 | RL-50 | 2048 | no-zoom (display-only) | **36.1%** (69/191) | 0.403 | 0% | causal: zoom worth +7.9pt at 2048 (44.0 vs 36.1) |
 | ... | | | | | | |
 
+## IN-DISTRIBUTION cof_rl eval set (408 Qs, sglang greedy, answer-correct %)
+| model | acc | zoom | note |
+|-------|-----|------|------|
+| base  | **35.0%** (143/408; lenient 38.7%) | 0% | base ignores tools; scored from free-text (exact-norm) |
+| SFT   | **46.8%** (191/408) | 29% | reward 0.534 |
+| RL-50 | **52.0%** (212/408) | 100% | reward 0.615 |
+
+**On the cof_rl (in-distribution) eval set RL DOES improve: base 35.0 -> SFT 46.8 -> RL 52.0**
+(RL +17pt over base, +5.2pt over SFT; cof_rl-val reward 0.529->0.586->0.614 over step 0/25/50).
+OPPOSITE of V* (RL flat/regresses) -> stock GRPO learns its training distribution but does
+NOT transfer to V* (OOD): drives zoom to 100% for the +0.1 zoom bonus + fits cof_rl answers.
+(Tool-gated val reads base~0 on both sets due to the no-tool-protocol artifact; base re-scored
+from free-text.)
+
 ## Jobs in flight
 - RL 2640812 (GRPO from SFT-321, total_training_steps=50, save_freq=25)
 - base@256+zoom 2640813 -> dump slurm/val_dumps/base_256zoom (re-score from response)
