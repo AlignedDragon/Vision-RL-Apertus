@@ -2,20 +2,28 @@
 #SBATCH --job-name=prepare_vcot_rl
 #SBATCH --account=infra01
 #SBATCH --reservation=SD-69241-apertus-1-5-0
+#SBATCH --array=0-7
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=460000
-#SBATCH --time=06:00:00
+#SBATCH --time=04:00:00
 #SBATCH --environment=verl_env
 #SBATCH --partition=normal
 #SBATCH --gpus-per-node=1
-#SBATCH --output=logs/%x_%j.out
-#SBATCH --error=logs/%x_%j.err
+#SBATCH --output=logs/%x_%A_%a.out
+#SBATCH --error=logs/%x_%A_%a.err
+
+# Full RL split, sharded across 8 GPUs as an 8-way job array (one single-GPU task
+# per shard — the proven 1-GPU prep pattern, replicated). VQ-encode runs ~3.9
+# img/s on 1 GH200; ~24.4k rows/shard -> ~1.7h. We use ALL the single-word RL data
+# (no cap). Each task writes its own atomic shard file; finalize with the dependent
+# merge job (slurm/merge_vcot_rl_shards.slurm). The shards/ dir is cleaned ONCE by
+# the submitter BEFORE this array starts (NOT here — array tasks must not race).
 
 set -euo pipefail
 
-echo "=== Job started at $(date '+%Y-%m-%d %H:%M:%S') ==="
+echo "=== Array task ${SLURM_ARRAY_TASK_ID} started at $(date '+%Y-%m-%d %H:%M:%S') ==="
 
 # --- Conda ---
 source /users/msayfiddinov/capscratch/miniconda/etc/profile.d/conda.sh
@@ -73,19 +81,18 @@ echo "=== GPU Info ==="
 nvidia-smi --list-gpus
 echo ""
 
-# --- Run parse ---
-# VQ-encode runs ~3.9 img/s on 1 GH200. The RL split is ~186k rows (~13h, beyond
-# the 12h partition cap). An 8h GRPO run (bs=64) consumes well under 20k prompts,
-# so we cap the parse at VCOT_RL_LIMIT (default 40000) for ample margin and a
-# ~3h prep. Override with VCOT_RL_LIMIT=0 (or unset) to parse the full split.
-VCOT_RL_LIMIT="${VCOT_RL_LIMIT:-40000}"
+# --- Run this shard ---
+NUM_SHARDS=8
+VCOT_RL_LIMIT="${VCOT_RL_LIMIT:-0}"   # 0 = full RL split (default); >0 = debug subset
 LIMIT_ARG=""
 if [ "$VCOT_RL_LIMIT" != "0" ]; then
     LIMIT_ARG="--limit $VCOT_RL_LIMIT"
 fi
-echo "=== Starting Parse (limit='${VCOT_RL_LIMIT}') ==="
-python3 data_prep/vcot_rl_parse.py --config configs/apertus.yaml $LIMIT_ARG
+
+echo "=== Shard ${SLURM_ARRAY_TASK_ID}/${NUM_SHARDS} parse (limit='${VCOT_RL_LIMIT}') ==="
+python3 data_prep/vcot_rl_parse.py --config configs/apertus.yaml \
+    --num-shards "$NUM_SHARDS" --shard-index "$SLURM_ARRAY_TASK_ID" $LIMIT_ARG
 echo ""
 
-echo "=== Job ended at $(date '+%Y-%m-%d %H:%M:%S') ==="
-echo "=== Job Complete ==="
+echo "=== Array task ${SLURM_ARRAY_TASK_ID} ended at $(date '+%Y-%m-%d %H:%M:%S') ==="
+echo "=== Shard Complete (merge separately with slurm/merge_vcot_rl_shards.slurm) ==="

@@ -20,8 +20,10 @@ keeps the original 50/50 answer-vs-IoU balance, scaled to 0.4 + 0.4.
   - answer_match: 1.0 if the last display_answers call string-matches the ground
     truth (case/trailing-punct normalized), else 0.0.
   - IoU: continuous overlap in [0, 1] between the last draw_bbox_tool call's
-    bbox_2d and the gold box. Both are in ORIGINAL-image pixel space (the
-    draw_bbox_tool schema and the gold `bboxs` agree), so IoU needs no rescaling.
+    bbox_2d and the gold box. Both are in the smart_resize'd / perceived image
+    pixel space: vcot_rl_parse.py expresses the gold box there via scale_bbox, and
+    the tool schema asks for "pixels of the image as shown to you", so the two
+    agree and IoU needs no rescaling.
 
 The gold box is read from `extra_info["bbox"]` (carried by vcot_rl_parse.py).
 

@@ -61,6 +61,8 @@ sys.path.insert(0, str(PROJECT_ROOT))
 # transformers, vision) are imported inside main().
 from data_prep.vcot_sft_parse import (
     APERTUS_SYSTEM,
+    DEFAULT_N_SFT,
+    DEFAULT_N_TEST,
     load_config,
     load_tool_schemas,
     load_rows,
@@ -140,7 +142,7 @@ def _build_parquet_record(meta: dict, split: str) -> dict:
 
 
 def _split_and_write_parquet(
-    metadata_path: Path, out_dir: Path, val_ratio: float, seed: int
+    metadata_path: Path, out_dir: Path, val_ratio: float, seed: int, max_val: int = 1000
 ) -> tuple[int, int]:
     """Read metadata.jsonl, deterministic shuffle+split, write train/val parquet."""
     meta_rows: list[dict] = []
@@ -158,6 +160,7 @@ def _split_and_write_parquet(
     rng = np.random.default_rng(seed)
     perm = rng.permutation(n)
     n_val = max(1, int(round(n * val_ratio))) if n > 1 else 0
+    n_val = min(n_val, max_val)  # cap val (0.05*~195k would be a wastefully large eval set)
     val_idx = set(perm[:n_val].tolist())
 
     train_records: list[dict] = []
@@ -168,9 +171,66 @@ def _split_and_write_parquet(
         (val_records if split == "val" else train_records).append(rec)
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    pq.write_table(pa.Table.from_pylist(train_records), out_dir / "train.parquet")
-    pq.write_table(pa.Table.from_pylist(val_records), out_dir / "val.parquet")
+    # Small row groups are REQUIRED at this scale. HuggingFace `datasets` reads a
+    # parquet with batch_size = row_groups[0].num_rows; the prompts are huge (~8KB
+    # each), so a single big row group makes the nested `prompt`/`extra_info`
+    # arrays exceed pyarrow's per-chunk limit -> forced multi-chunk -> "Nested data
+    # conversions not implemented for chunked array outputs" at load. Small groups
+    # keep each read batch single-chunk. (Harmless for the small SFT/CoF parquets.)
+    rg = 2048
+    pq.write_table(pa.Table.from_pylist(train_records), out_dir / "train.parquet", row_group_size=rg)
+    pq.write_table(pa.Table.from_pylist(val_records), out_dir / "val.parquet", row_group_size=rg)
     return len(train_records), len(val_records)
+
+
+def shard_metadata_path(out_dir: Path, shard_index: int, num_shards: int) -> Path:
+    return out_dir / "shards" / f"metadata.shard-{shard_index}-of-{num_shards}.jsonl"
+
+
+def merge_shards(
+    out_dir: Path, num_shards: int, val_ratio: float, seed: int, max_val: int
+) -> tuple[int, int]:
+    """Concatenate all shard metadata files -> metadata.jsonl -> train/val parquet.
+
+    Hard-fails unless exactly `num_shards` finished shard files are present (a
+    crashed shard leaves only a `.tmp`, so it cannot be mistaken for done).
+    """
+    shard_dir = out_dir / "shards"
+    files = sorted(
+        shard_dir.glob(f"metadata.shard-*-of-{num_shards}.jsonl"),
+        key=lambda p: int(p.name.split("-")[1]),
+    )
+    if len(files) != num_shards:
+        raise SystemExit(
+            f"Expected {num_shards} shard files in {shard_dir}, found {len(files)}: "
+            f"{[f.name for f in files]} (a shard crashed or is still .tmp)"
+        )
+    merged = out_dir / "metadata.jsonl"
+    n_lines = 0
+    with open(merged, "w", encoding="utf-8") as out:
+        for fp in files:  # deterministic order: shard 0, 1, 2, ...
+            with open(fp, encoding="utf-8") as fin:
+                for line in fin:
+                    out.write(line)
+                    n_lines += 1
+    print(f"[merge] concatenated {len(files)} shards -> {merged} ({n_lines} rows)")
+    return _split_and_write_parquet(merged, out_dir, val_ratio, seed, max_val)
+
+
+def _write_single_parquet(metadata_path: Path, out_dir: Path, name: str = "test.parquet") -> int:
+    """Render all metadata rows into one parquet (no train/val split) — eval set."""
+    meta_rows = []
+    with open(metadata_path) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                meta_rows.append(json.loads(line))
+    records = [_build_parquet_record(m, "test") for m in meta_rows]
+    out_dir.mkdir(parents=True, exist_ok=True)
+    # Small row groups: keep nested columns single-chunk for HF datasets (see the
+    # note in _split_and_write_parquet).
+    pq.write_table(pa.Table.from_pylist(records), out_dir / name, row_group_size=2048)
+    return len(records)
 
 
 def main():
@@ -182,12 +242,40 @@ def main():
     parser.add_argument("--config", default="configs/apertus.yaml")
     parser.add_argument("--tool_config", default="configs/vcot_rl_tool_config.yaml")
     parser.add_argument("--limit", type=int, default=None, help="Process only first N RL rows (debug)")
+    parser.add_argument("--n_sft", type=int, default=DEFAULT_N_SFT,
+                        help="SFT holdout size (shared with vcot_sft_parse so the split agrees)")
+    parser.add_argument("--n_test", type=int, default=DEFAULT_N_TEST,
+                        help="TEST holdout size (shared with vcot_sft_parse so the split agrees)")
+    parser.add_argument("--render-split", choices=["rl", "test"], default="rl",
+                        help="rl: render rl_indices -> vcot_rl/{train,val}.parquet (shardable). "
+                             "test: render the held-out test_indices -> vcot_test/test.parquet "
+                             "(single file, in-distribution eval set).")
+    parser.add_argument("--num-shards", type=int, default=1,
+                        help="Total shard processes (one per GPU). >1 => write a per-shard "
+                             "metadata file and skip inline parquet (use --merge to finalize).")
+    parser.add_argument("--shard-index", type=int, default=0,
+                        help="Which shard this process renders, in [0, num_shards).")
+    parser.add_argument("--merge", action="store_true",
+                        help="Merge mode: concatenate shard metadata -> metadata.jsonl -> "
+                             "train/val parquet. No GPU/model load.")
+    parser.add_argument("--max_val", type=int, default=1000,
+                        help="Hard cap on validation rows.")
     parser.add_argument("--val_ratio", type=float, default=0.05)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
+    # Merge mode: no rows/models loaded; just stitch shards and write parquet.
+    if args.merge:
+        out_dir = PROJECT_ROOT / "data_prep" / "vcot_rl"
+        n_train, n_val = merge_shards(
+            out_dir, args.num_shards, args.val_ratio, args.seed, args.max_val
+        )
+        print(f"[merge] wrote {n_train} train / {n_val} val parquet rows")
+        return
+
+    render_test = args.render_split == "test"
     raw_dir = PROJECT_ROOT / "data_prep" / "vcot"
-    out_dir = PROJECT_ROOT / "data_prep" / "vcot_rl"
+    out_dir = PROJECT_ROOT / "data_prep" / ("vcot_test" if render_test else "vcot_rl")
     input_path = Path(args.input) if args.input else raw_dir / "raw.jsonl"
     output_path = Path(args.output) if args.output else out_dir / "metadata.jsonl"
     images_root = Path(args.images_root) if args.images_root else raw_dir / "images"
@@ -195,13 +283,20 @@ def main():
 
     config = load_config(args.config)
 
-    # Load the RL slice of the shared SFT:RL split.
+    # Load the requested slice of the shared SFT/TEST/RL split. TEST = held-out
+    # eval set (disjoint from SFT and RL); RL = all rows minus SFT minus TEST.
     all_rows = load_rows(input_path)
-    split = get_or_create_split_indices(len(all_rows), split_path, seed=args.seed)
-    rl_indices = set(split["rl_indices"])
-    rows = [row for row in all_rows if row["_raw_index"] in rl_indices]
+    split = get_or_create_split_indices(
+        all_rows, split_path, seed=args.seed, n_sft=args.n_sft, n_test=args.n_test
+    )
+    sel_indices = set(split["test_indices" if render_test else "rl_indices"])
+    rows = [row for row in all_rows if row["_raw_index"] in sel_indices]
 
-    # Defensive single-word filter (the download filter already enforces it).
+    # Single-word answerability filter -> keep ALL such rows (no cap). Note the
+    # ~83k leftover GQA rows here DO carry a `thought`/`full_answer` in raw.jsonl,
+    # but RL deliberately reads ONLY question/answer/bboxs below: the reasoning
+    # trace is never rendered into the prompt, so the model cannot read off the
+    # answer ("no-cheat"). A post-render assertion in QA double-checks this.
     num_multi = 0
     kept = []
     for row in rows:
@@ -214,9 +309,34 @@ def main():
     if args.limit:
         rows = rows[: args.limit]
 
+    # Strided shard slice (disjoint + covering); striding interleaves the big
+    # contiguous gqa block so every shard gets a runtime-balanced dataset mix.
+    # TEST is small -> always single-process.
+    sharded = args.num_shards > 1 and not render_test
+    if sharded:
+        if not (0 <= args.shard_index < args.num_shards):
+            raise SystemExit(
+                f"--shard-index {args.shard_index} out of range for --num-shards {args.num_shards}"
+            )
+        rows = rows[args.shard_index :: args.num_shards]
+
+    # Sharded runs write a per-shard metadata file (atomic rename on completion)
+    # and skip inline parquet; `--merge` stitches them. Single-process is unchanged.
+    if sharded:
+        output_path = shard_metadata_path(out_dir, args.shard_index, args.num_shards)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        write_path = output_path.with_name(output_path.name + ".tmp")
+    else:
+        write_path = output_path
+
     print(f"Loaded {len(all_rows)} raw rows from {input_path}")
-    print(f"Split file: {split_path} (SFT={len(split['sft_indices'])}, RL={len(split['rl_indices'])})")
-    print(f"RL rows after single-word filter: {len(rows)} (dropped {num_multi} multi-word)")
+    print(f"Split file: {split_path} (SFT={len(split['sft_indices'])}, "
+          f"TEST={len(split.get('test_indices', []))}, RL={len(split['rl_indices'])})")
+    if sharded:
+        print(f"Shard {args.shard_index}/{args.num_shards}: {len(rows)} rows (dropped {num_multi} multi-word total)")
+    else:
+        print(f"{'TEST' if render_test else 'RL'} rows after single-word filter: "
+              f"{len(rows)} (dropped {num_multi} multi-word)")
 
     tool_schemas = load_tool_schemas(args.tool_config)
     print(f"Loaded tool schemas from {args.tool_config}: "
@@ -234,13 +354,13 @@ def main():
     vq_model = load_vq_model(config["model"]["vq_model"], device="cuda:0")
     print("Models loaded")
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    write_path.parent.mkdir(parents=True, exist_ok=True)
     skipped = 0
     data_source_counts: dict[str, int] = {}
     prompt_lens: list[int] = []
     start = time.time()
 
-    with open(output_path, "w", encoding="utf-8") as out_f:
+    with open(write_path, "w", encoding="utf-8") as out_f:
         for i, row in enumerate(rows):
             qid = row["_raw_index"]
             dataset = row.get("dataset") or ""
@@ -296,6 +416,13 @@ def main():
                 print(f"  [{i+1}/{len(rows)}] {rate:.2f} rows/s  skipped={skipped}")
 
     written = len(rows) - skipped
+
+    if sharded:
+        write_path.replace(output_path)  # atomic: mark this shard done
+        print(f"\n[shard {args.shard_index}/{args.num_shards}] wrote {written} records "
+              f"-> {output_path} (skipped {skipped})")
+        return  # shards do NOT write parquet; run --merge to finalize
+
     print(f"\nWrote {written} records to {output_path}")
     if skipped:
         print(f"Skipped {skipped} rows")
@@ -311,8 +438,13 @@ def main():
               f"p50={prompt_lens[n // 2]} p95={prompt_lens[int(n * 0.95)]} "
               f"max={prompt_lens[-1]}")
 
+    if render_test:
+        n = _write_single_parquet(output_path, out_dir, "test.parquet")
+        print(f"\nWrote {n} rows to {out_dir / 'test.parquet'} (in-distribution eval set)")
+        return
+
     n_train, n_val = _split_and_write_parquet(
-        output_path, output_path.parent, args.val_ratio, args.seed
+        output_path, output_path.parent, args.val_ratio, args.seed, args.max_val
     )
     print(f"\nWrote {n_train} rows to {output_path.parent / 'train.parquet'}")
     print(f"Wrote {n_val} rows to {output_path.parent / 'val.parquet'}")

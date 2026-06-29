@@ -21,6 +21,7 @@ Usage (interactive on a GPU node):
 
 import argparse
 import json
+import os
 import re
 import sys
 import time
@@ -42,6 +43,32 @@ APERTUS_INSTRUCTION = (
 )
 
 ENUM_RE = re.compile(r"(?:(?<=^)|(?<=[\s\n]))\d+\.\s*")
+
+# Split policy (v3): three disjoint sets, deterministic from `seed`.
+#   SFT  = DEFAULT_N_SFT rows sampled from GQA-with-thought (only GQA ships a
+#          non-empty `thought`, the reasoning chain SFT needs).
+#   TEST = DEFAULT_N_TEST rows sampled from the remaining (non-SFT) pool, reserved
+#          as a clean held-out eval set — excluded from BOTH SFT and RL so the
+#          in-distribution eval never overlaps training.
+#   RL   = everything else (all subsets incl. leftover GQA, all single-word).
+# SFT selection is identical to v2 (same seed/rng draw), so re-splitting keeps the
+# SFT set stable; TEST is carved next, then RL = rest.
+SPLIT_VERSION = 3
+DEFAULT_N_SFT = 10000
+DEFAULT_N_TEST = 3000
+
+
+def is_sft_eligible(row: dict) -> bool:
+    """SFT requires a reasoning chain: only GQA rows carry a non-empty `thought`."""
+    if row.get("dataset") != "gqa":
+        return False
+    t = row.get("thought")
+    return isinstance(t, str) and bool(t.strip())
+
+
+def sft_eligible_indices(rows: list[dict]) -> list[int]:
+    """Raw-index order is stable (== file line index), so this is deterministic."""
+    return [row["_raw_index"] for row in rows if is_sft_eligible(row)]
 
 
 def load_config(path: str) -> dict:
@@ -143,34 +170,77 @@ def load_rows(path: Path) -> list[dict]:
 
 
 def get_or_create_split_indices(
-    n_rows: int,
+    rows: list[dict],
     path: Path,
-    seed: int,
-    sft_weight: int = 1,
-    rl_weight: int = 10,
+    seed: int = 42,
+    n_sft: int = DEFAULT_N_SFT,
+    n_test: int = DEFAULT_N_TEST,
 ) -> dict:
+    """Deterministic SFT / TEST / RL split (v3).
+
+    SFT  = `seed`-deterministic sample of `n_sft` SFT-eligible (GQA-with-thought)
+           rows (identical draw to v2, so the SFT set is stable across versions).
+    TEST = `n_test` rows sampled from the remaining non-SFT pool — a clean held-out
+           eval set, excluded from both SFT and RL.
+    RL   = every remaining raw index (non-SFT, non-TEST).
+    All three parses call this with the full `rows`, so they agree regardless of
+    run order. A file from an older format / mismatched config is regenerated.
+    """
+    n_rows = len(rows)
     if path.exists():
         with open(path, encoding="utf-8") as f:
             split = json.load(f)
-        if split.get("n_rows") != n_rows:
-            raise ValueError(
-                f"{path} was built for {split.get('n_rows')} rows, current raw has {n_rows}"
-            )
-        return split
+        if (
+            split.get("version") == SPLIT_VERSION
+            and split.get("n_rows") == n_rows
+            and split.get("n_sft") == n_sft
+            and split.get("n_test") == n_test
+            and split.get("seed") == seed
+        ):
+            return split
+        print(
+            f"[split] Regenerating {path}: stale/old format "
+            f"(version={split.get('version')!r}, n_rows={split.get('n_rows')!r}, "
+            f"n_sft={split.get('n_sft')!r}, n_test={split.get('n_test')!r}, "
+            f"seed={split.get('seed')!r})"
+        )
+
+    eligible = sft_eligible_indices(rows)  # GQA-with-thought, raw-index order
+    if len(eligible) < n_sft:
+        raise ValueError(
+            f"Only {len(eligible)} SFT-eligible (gqa+thought) rows; need n_sft={n_sft}"
+        )
 
     rng = np.random.default_rng(seed)
-    perm = rng.permutation(n_rows).tolist()
-    n_sft = (n_rows * sft_weight) // (sft_weight + rl_weight)
+    sft_chosen = rng.choice(np.asarray(eligible, dtype=np.int64), size=n_sft, replace=False)
+    sft_set = {int(i) for i in sft_chosen}
+
+    non_sft = [i for i in range(n_rows) if i not in sft_set]
+    if len(non_sft) < n_test:
+        raise ValueError(f"Only {len(non_sft)} non-SFT rows; need n_test={n_test}")
+    test_chosen = rng.choice(np.asarray(non_sft, dtype=np.int64), size=n_test, replace=False)
+    test_set = {int(i) for i in test_chosen}
+    rl_indices = [i for i in non_sft if i not in test_set]  # non-SFT minus TEST
+
     split = {
+        "version": SPLIT_VERSION,
         "seed": seed,
-        "ratio": {"sft": sft_weight, "rl": rl_weight},
         "n_rows": n_rows,
-        "sft_indices": sorted(perm[:n_sft]),
-        "rl_indices": sorted(perm[n_sft:]),
+        "n_sft": n_sft,
+        "n_test": n_test,
+        "policy": "sft=sample(gqa_with_thought,n_sft); test=sample(non_sft,n_test); rl=non_sft-test",
+        "sft_indices": sorted(sft_set),
+        "test_indices": sorted(test_set),
+        "rl_indices": rl_indices,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
+    # Per-process tmp name + atomic rename: SFT prep and the 8 RL shard procs may
+    # all regenerate concurrently; each writes its own tmp (identical content) and
+    # atomically renames, so the final file is never torn. Last writer wins.
+    tmp = path.with_name(f"{path.name}.tmp.{os.getpid()}")
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(split, f)
+    tmp.replace(path)
     return split
 
 
@@ -204,6 +274,10 @@ def main():
     parser.add_argument("--config", default="configs/apertus.yaml")
     parser.add_argument("--tool-config", default="configs/vcot_rl_tool_config.yaml")
     parser.add_argument("--limit", type=int, default=None, help="Process only first N SFT rows (debug)")
+    parser.add_argument("--n_sft", type=int, default=DEFAULT_N_SFT,
+                        help="Number of GQA-with-thought rows to sample for SFT")
+    parser.add_argument("--n_test", type=int, default=DEFAULT_N_TEST,
+                        help="Number of held-out TEST rows reserved (excluded from SFT and RL)")
     parser.add_argument("--val_ratio", type=float, default=0.05)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
@@ -216,7 +290,7 @@ def main():
     split_path = Path(args.split_indices) if args.split_indices else raw_dir / "split_indices.json"
 
     rows = load_rows(input_path)
-    split = get_or_create_split_indices(len(rows), split_path, seed=args.seed)
+    split = get_or_create_split_indices(rows, split_path, seed=args.seed, n_sft=args.n_sft, n_test=args.n_test)
     sft_indices = set(split["sft_indices"])
     rows = [row for row in rows if row["_raw_index"] in sft_indices]
     if args.limit:

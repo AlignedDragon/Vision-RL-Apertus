@@ -6,7 +6,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=460000
-#SBATCH --time=08:00:00
+#SBATCH --time=12:00:00
 #SBATCH --environment=verl_env
 #SBATCH --partition=normal
 #SBATCH --gpus-per-node=4
@@ -145,14 +145,14 @@ fi
 # Run from PROJECT so `python -m` does not put the container's bundled, outdated
 # verl on sys.path[0] and shadow the editable install.
 cd "$PROJECT"
-# save_freq=50 guarantees a checkpoint lands inside the 8h wall-clock window.
+# save_freq=25: checkpoint often so a 12h timeout re-does at most ~25 steps on resume.
 python3 -m verl.trainer.main_ppo \
     --config-path="$PROJECT/configs" \
     --config-name=vcot_rl_grpo \
     actor_rollout_ref.model.path="$RL_MODEL_PATH" \
     trainer.default_local_dir="$RL_CHECKPOINT_DIR" \
     trainer.resume_mode="$RL_RESUME_MODE" \
-    trainer.save_freq=50 \
+    trainer.save_freq=25 \
     "$@"
 
 echo "=== Job ended at $(date) ==="
