@@ -3,8 +3,8 @@
 Tool-augmented visual reasoning for **Apertus 8B**, trained with [verl](https://github.com/volcengine/verl) (SFT + GRPO RL).
 Two pipelines live here:
 
-- **CoF (Chain-of-Focus)** — an *image zoom-in* tool that lets the model crop and re-examine a region at higher resolution before answering. Mirrors DeepEyes, adapted from Qwen-VL to Apertus. Evaluated on **V\*Bench**.
-- **VCoT (Visual-CoT)** — a *draw-bbox* grounding tool: the model localizes the referred region, then answers. Evaluated on **RefCOCO+**.
+- **VCoT (Visual-CoT)** — a *draw-bbox* grounding tool: the model localizes the referred region, then answers. Evaluated on **RefCOCO+**. Trained first; its checkpoint initializes CoF below.
+- **CoF (Chain-of-Focus)** — an *image zoom-in* tool that lets the model crop and re-examine a region at higher resolution before answering. Mirrors DeepEyes, adapted from Qwen-VL to Apertus. **Initialized from the VCoT grounding checkpoint** so it zooms the right region. Evaluated on **V\*Bench**.
 
 ## How Apertus "sees"
 
@@ -51,7 +51,7 @@ Everything runs on the CSCS GH200 cluster via SLURM (`--account infra01 --enviro
 sbatch slurm/prepare_cof_sft.slurm        # CoF-SFT-Data  -> parquet
 sbatch slurm/prepare_cof_rl.slurm         # cof_rl (DeepEyes-derived) -> parquet
 
-# 2. train
+# 2. train  (CoF SFT initializes from the merged VCoT RL grounding checkpoint)
 sbatch slurm/cof_sft.slurm                # SFT (>=3 epochs at the 256 budget)
 sbatch slurm/cof_rl.slurm                 # GRPO (verl + sglang rollouts)
 sbatch slurm/merge_cof_rl_checkpoint.slurm  # FSDP shards -> HF checkpoint
@@ -69,19 +69,21 @@ Model paths (base SFT checkpoint, Emu3.5 tokenizer, Emu3.5 source) are set in `c
 
 ## Results (sglang, greedy)
 
-**V\*Bench** — 191 MCQ, answer-correct %:
+The zoom-in policy is **initialized from the VCoT grounding checkpoint** (see order below), so it localizes the region it zooms into.
+
+**V\*Bench** — 191 MCQ, %:
 
 | Model | 256-token budget |
 |-------|:---:|
-| base (direct) | 33.0 |
-| SFT + zoom    | 35.6 |
-| RL + zoom     | 32.5 |
+| base (direct)         | 33.0 |
+| SFT + zoom (grnd-init) | 45.2 |
+| RL + zoom (grnd-init)  | 49.3 |
 
-**In-distribution** held-out cof_rl eval (408 Q): base **35.0** → SFT **46.8** → RL **52.0**.
+**In-distribution** held-out cof_rl eval (408 Q): base **35.0** → SFT **54.4** → RL **64.9**.
 
 **RefCOCO+** val, Acc@0.5 IoU: base **0.000** → SFT **0.274** → RL **0.309**.
 
-Takeaways: the zoom tool **causally helps** (no-zoom ablations: +3pt at 256, +8pt at 2048). RL improves strongly for CoF evaluation set but the stock 1/0 GRPO reward does **not** reliably transfer to V\* due to lack of grounding ability.
+Takeaways: the zoom tool **causally helps** (no-zoom ablations: +3pt at 256, +8pt at 2048). We first train the VCoT grounding-box capability, then initialize the CoF zoom-in policy from that checkpoint. This grounding init is what makes zoom transfer to V\*Bench: with a base-initialized policy the stock GRPO reward left V\* flat and RL even regressed it (35.6 → 32.5), because the model zoomed the wrong region; the grounding-initialized policy lifts both the CoF eval and V\*Bench (33.0 → 45.2 → 49.3) and reverses that regression.
 
 ## Status / caveats
 
